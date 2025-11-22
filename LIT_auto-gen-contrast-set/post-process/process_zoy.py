@@ -1,15 +1,16 @@
 import pickle
 import json
 import os
+import sys
 import argparse
 import numpy as np
 from collections import defaultdict
-from transfer.ergtransfer import get_tense
 import torch
 import random
 from copy import deepcopy
-from dl_pipeline.making_sense import uni_predict, bert_predict, ro_predict, xlnet_predict
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 from transformers import (
+    AutoModelForCausalLM, AutoModelForMaskedLM, AutoTokenizer,
     OpenAIGPTLMHeadModel, OpenAIGPTTokenizer,
     GPT2LMHeadModel, GPT2Tokenizer,
     BertForMaskedLM, BertTokenizer,
@@ -17,7 +18,12 @@ from transformers import (
     XLNetLMHeadModel, XLNetTokenizer,
 )
 from delphin.codecs import simplemrs, mrsjson
-
+from llama_cpp import Llama
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from transfer.ergtransfer import get_tense
+from making_sense_zoy import uni_predict, bert_predict, ro_predict, xlnet_predict
+from making_sense_zoy import score_causal_lm, score_masked_lm, score_gguf
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 ORI = "original"
 
 # Key: orig_label;1st_trans;2nd_trans, value: index of the rule
@@ -38,7 +44,7 @@ snli_rules = {
             "contradiction;future simple+passive: ARG2;past simple+passive: ARG2": "8b",
             "entailment;modality: may+passive: ARG2;modality: may+passive: ARG2": "9a",
             "contradiction;modality: may+passive: ARG2;modality: may+passive: ARG2": "9b"
-            }
+}
 
 mnli_rules = {
     # basic rules
@@ -71,7 +77,7 @@ ALL_RULES = {
             "mnli": mnli_rules,
             "sts": sts_rules,
             "tc": tc_rules,
-            }
+}
 
 MODEL_CLASSES = {
             "gpt": (OpenAIGPTLMHeadModel, OpenAIGPTTokenizer, uni_predict),
@@ -79,8 +85,21 @@ MODEL_CLASSES = {
             "bert": (BertForMaskedLM, BertTokenizer, bert_predict),
             "roberta": (RobertaForMaskedLM, RobertaTokenizer, ro_predict),
             "xlnet": (XLNetLMHeadModel, XLNetTokenizer, xlnet_predict),
-            }
+}
 
+# Modern way of loading models
+MODEL_CONFIGS = {
+    # Causal LMs
+    "mistral": (AutoModelForCausalLM, score_causal_lm),
+    "llama":   (AutoModelForCausalLM, score_causal_lm),
+    "gpt2":    (AutoModelForCausalLM, score_causal_lm),
+    # Masked LMs
+    "bert":    (AutoModelForMaskedLM, score_masked_lm),
+    "roberta": (AutoModelForMaskedLM, score_masked_lm),
+    "modernbert": (AutoModelForMaskedLM, score_masked_lm),
+    # GGUF LMs
+    "gguf":    (Llama, score_gguf),
+}
 
 def sample(data, sample):
     if sample <= 0 or sample > len(data):
@@ -88,8 +107,7 @@ def sample(data, sample):
     random.shuffle(data)
     return data[:sample]
 
-
-def select_best(data, model, tokenizer, predictor):
+def select_best_orig(data, model, tokenizer, predictor):
     cleaned_data = []
     for idx, entry in enumerate(data):
         cleaned_entry = defaultdict(lambda: defaultdict(str))
@@ -115,6 +133,65 @@ def select_best(data, model, tokenizer, predictor):
         print("processed " + str(idx) + "/" + str(len(data)), end="\r")
     return cleaned_data
 
+def select_best(data, model, tokenizer, predictor):
+    cleaned_data = []
+    for idx, entry in enumerate(data):
+        cleaned_entry = defaultdict(lambda: defaultdict(str))
+        cleaned_entry["gold_label"] = entry["gold_label"]
+        for sent in ["sentence1", "sentence2"]:
+            # If the sentence field is missing or empty, skip
+            if sent not in entry:
+                continue
+
+            # Handle "original" text (usually a simple string)
+            if isinstance(entry[sent], str):
+                cleaned_entry[sent][ORI] = entry[sent]
+                continue
+
+            # Handle variations (passive, negation, etc.)
+            # entry[sent] is a dictionary like {"original": "...", "passive": [...]}
+            for form, results in entry[sent].items():
+                # Skip if results is empty/None
+                if not results:
+                    continue
+
+                # 1. Filter based on tense/aspect logic (Legacy check)
+                if any([(tense in form) for tense in ["future", "present", "past"]]):
+                    # Check if "aspect" exists in original (it might not if your generator simplified the output)
+                    orig_meta = entry[sent].get(ORI)
+                    if isinstance(orig_meta, list) and len(orig_meta) > 0 and isinstance(orig_meta[0], dict):
+                         if "aspect" in orig_meta[0] and not orig_meta[0]["aspect"] in form:
+                             continue
+
+                # 2. Select the best sentence from the list
+                if not isinstance(results, str):
+                    # Determine if data is [String] (New) or [Dict] (Old)
+                    first_item = results[0]
+
+                    if isinstance(first_item, str):
+                        candidates = results
+                    elif isinstance(first_item, dict) and "surface" in first_item:
+                        candidates = [r["surface"] for r in results]
+                    else:
+                        # Fallback for unknown types
+                        candidates = [str(r) for r in results]
+
+                    # Run the language model predictor to pick the best one
+                    if len(candidates) > 1:
+                        scores = [predictor(r, model, tokenizer) for r in candidates]
+                        best_sentence = candidates[np.argmax(scores)]
+                    else:
+                        best_sentence = candidates[0]
+
+                    results = best_sentence
+
+                if not results:
+                    continue
+                cleaned_entry[sent][form] = results
+
+        cleaned_data.append(cleaned_entry)
+        print("processed " + str(idx) + "/" + str(len(data)), end="\r")
+    return cleaned_data
 
 def wirte_readable_text(cleaned_data, output_dir):
     with open(os.path.join(output_dir, "samples.txt"), "w") as file:
@@ -125,7 +202,6 @@ def wirte_readable_text(cleaned_data, output_dir):
                 for k, v in d[sent].items():
                     if k != ORI:
                         file.write(k + ": \n" + v + "\n\n")
-
 
 def apply_rules(cleaned_data, rules):
     final_data = []
@@ -215,10 +291,8 @@ def apply_rules(cleaned_data, rules):
         final_data.append(final_entry)
     return final_data
 
-
 def read_jsonl(filepath: str):
     ret = []
-    import json
     assert ".jsonl" in filepath
     print(f"Reading from: {filepath}")
     with open(filepath, "r") as f:
@@ -227,7 +301,6 @@ def read_jsonl(filepath: str):
                 continue
             ret.append(json.loads(line))
     return ret
-
 
 def write_to_file(final_data, output_dir, divide_data):
     random.shuffle(final_data)
@@ -240,7 +313,6 @@ def write_to_file(final_data, output_dir, divide_data):
         pickle.dump(final_data[:int(0.8 * len(final_data))], open(os.path.join(output_dir, "train"), "wb"))
         pickle.dump(final_data[int(0.8 * len(final_data)):int(0.9 * len(final_data))], open(os.path.join(output_dir, "dev"), "wb"))
         pickle.dump(final_data[int(0.9 * len(final_data)):], open(os.path.join(output_dir, "test"), "wb"))
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -299,35 +371,55 @@ def main():
         help="One of snli, sts, tc, mnli",
     )
     SPLITS = ["test", "dev"]
-    
+
     args = parser.parse_args()
-    
+
+    if args.model_type not in MODEL_CONFIGS:
+        raise ValueError(f"Model type {args.model_type} not found in MODEL_CONFIGS")
+    model_class, predictor = MODEL_CONFIGS[args.model_type]
+    if args.model_type == "gguf":
+        tokenizer = None # GGUF has internal tokenizer
+        model = model_class(
+            model_path=args.model_name,
+            n_gpu_layers=-1, # all layers on GPU
+            n_ctx=8192, # limit memory usage by reducing context to 8k instead of 128k
+            logits_all=True, # calculating log-likelihood score of the tokens needs full logit extraction
+            verbose=False
+        )
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        # Fix padding token issues for Llama/Mistral
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            model = model_class.from_pretrained(
+            args.model_name,
+            torch_dtype=torch.float16,
+            device_map="auto"
+        )
+        model.to("cuda")
+        model.eval()
+
     if os.path.isdir(args.data_path):
         paths = [os.path.join(args.data_path, filename) for filename in os.listdir(args.data_path)][::-1]
     else:
         paths = [args.data_path]
-    
-    # data = []
-    # for path in paths:
-    #     with open(path) as file:
-    #         for line in file:
-    #             data.append(json.loads(line.strip()))
-    # print(len(data))
 
-    # model_class, tokenizer_class, predictor = MODEL_CLASSES[args.model_type]
-    # model = model_class.from_pretrained(args.model_name)
-    # model.to("cuda")
-    # model.eval()
-    # tokenizer = tokenizer_class.from_pretrained(args.model_name)
-    
-    # data = sample(data, args.sample)
-    # cleaned_data = select_best(data, model, tokenizer, predictor)
-    # if args.write_text:
-    #     wirte_readable_text(cleaned_data, args.output_dir)
+    data = []
+    for path in paths:
+        with open(path) as file:
+            for line in file:
+                data.append(json.loads(line.strip()))
+    print(f"Zoy Debug: json line count: {len(data)}")
+    print(f"Zoy Debug: json data: {data}")
+    data = sample(data, args.sample)
+    cleaned_data = select_best(data, model, tokenizer, predictor)
+    if args.write_text:
+        wirte_readable_text(cleaned_data, args.output_dir)
     basic_rules = ["1a", "1b", "2a", "2b", "3a", "3b", "4", "5"]
     comp_rules = ["7a", "7b", "8a", "8b", "9a", "9b"]
-    import json
-    rules = {v: k for k, v in json.load(open("/home/lzy/proj/AnalyzingNeuralLMs/datasets/final_snli/rules.json")).items()}
+    #rules = {v: k for k, v in json.load(open("/home/lzy/proj/AnalyzingNeuralLMs/datasets/final_snli/rules.json")).items()}
+    target_rules = ALL_RULES[args.task]
+    rules = {v: k for k, v in target_rules.items()}
     sent1_trans = [r.split(";")[1] for r in rules.values()]
     sent2_trans = [r.split(";")[2] for r in rules.values()]
     for path in paths:
@@ -335,8 +427,9 @@ def main():
             continue
         index = [split in path for split in SPLITS].index(True)
         result_filename = SPLITS[index]
-
-        cleaned_data = read_jsonl(path)
+        raw_data = read_jsonl(path)
+        print(f"Filtering {result_filename} with {args.model_type}...")
+        cleaned_data = select_best(raw_data, model, tokenizer, predictor)
         sent1_stats = {}
         sent2_stats = {}
         for d in cleaned_data:
@@ -387,10 +480,7 @@ def main():
         pickle.dump(comp_data, open(os.path.join(f"{args.output_dir}/compositional/", result_filename), "wb"))
 
     # write_to_file(final_data, args.output_dir, args.divide_data)
-    import json
     # json.dump(ALL_RULES[args.task], open(f"{args.output_dir}/rules.json", "w"))
-
 
 if __name__ == "__main__":
     main()
-

@@ -1,16 +1,93 @@
 # from https://github.com/XuhuiZhou/CATS/blob/master/making_sense.py
+# from https://github.com/leo-liuzy/LIT_auto-gen-contrast-set/blob/main/post-process/making_sense.py
 
 import torch
 from torch.nn import CrossEntropyLoss
-from transformers import *
 import numpy as np
 import math
-# OPTIONAL: if you want to have more information on what's happening, activate the logger as follows
 import logging
 import os
 import sys
+
+# Enable only certain GPUs
+#os.environ["CUDA_VISIBLE_DEVICES"]="0"
+#os.environ["HIP_VISIBLE_DEVICES="]="1"
+
 logging.basicConfig(level=logging.INFO)
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+logger = logging.getLogger(__name__)
+
+def get_device():
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
+
+def score_causal_lm(text, model, tokenizer):
+    """
+    Scoring for Standard PyTorch Causal LMs (Mistral, Llama, GPT-2).
+    """
+    device = get_device()
+    inputs = tokenizer(text, return_tensors="pt")
+    input_ids = inputs["input_ids"].to(device)
+    if input_ids.size(1) == 0:
+        return -math.inf
+    with torch.no_grad():
+        outputs = model(input_ids, labels=input_ids)
+        loss = outputs.loss
+    return -loss.item()
+
+def score_masked_lm(text, model, tokenizer):
+    """
+    Scoring for Masked LMs (BERT, RoBERTa).
+    """
+    device = get_device()
+    inputs = tokenizer(text, return_tensors="pt", add_special_tokens=True)
+    input_ids = inputs["input_ids"].to(device)
+    seq_len = input_ids.size(1)
+    if seq_len <= 2:
+        return -math.inf
+    total_score = 0
+    masked_indices = range(1, seq_len - 1)
+    with torch.no_grad():
+        for i in masked_indices:
+            original_token_id = input_ids[0, i].clone()
+            input_ids[0, i] = tokenizer.mask_token_id
+            outputs = model(input_ids)
+            logits = outputs.logits
+            token_logits = logits[0, i]
+            log_probs = torch.nn.functional.log_softmax(token_logits, dim=0)
+            score = log_probs[original_token_id].item()
+            total_score += score
+            input_ids[0, i] = original_token_id
+    return total_score / len(masked_indices)
+
+def score_gguf(text, llm, tokenizer=None):
+    """
+    Scoring for GGUF models using llama-cpp-python.
+    We ask the model to 'echo' the prompt and return the log-probs of the tokens it just read.
+    """
+    if not text.strip():
+        return -math.inf
+    # logprobs=1 tells the model to return the log-probability of the actual token
+    # echo=True tells it to process the prompt itself
+    # max_tokens=0 prevents it from generating NEW text
+    output = llm(
+        text,
+        max_tokens=0,
+        logprobs=1,
+        echo=True,
+        temperature=0.0 # Deterministic
+    )
+    try:
+        token_logprobs = output['choices'][0]['logprobs']['token_logprobs']
+        # The first token usually has 'None' logprob because it has no context
+        valid_logprobs = [lp for lp in token_logprobs if lp is not None]
+        if not valid_logprobs:
+            return -math.inf
+        # Calculate average log-likelihood (equivalent to negative loss)
+        score = sum(valid_logprobs) / len(valid_logprobs)
+        return score
+    except Exception as e:
+        logger.error(f"GGUF Scoring Error: {e}")
+        return -math.inf
+
 def uni_predict(text, model, tokenizer):
     # Tokenized input
     # text = "[CLS] I got restricted because Tom reported my reply [SEP]"
@@ -120,93 +197,3 @@ def xlnet_predict(text, model, tokenizer):
         sentence_score -= next_token_logits.item()
         tokenized_text[masked_index] = masked_word
     return sentence_score/(length)
-
-if __name__ == '__main__':
-    test = sys.argv[1]
-    model_type = sys.argv[2]
-    robust = sys.argv[3]
-    if model_type=='xlnet':
-        # For XLNet
-        tokenizer = XLNetTokenizer.from_pretrained('xlnet-large-cased')
-        model = XLNetLMHeadModel.from_pretrained('xlnet-large-cased')
-    elif model_type=='bert':
-        # For BERT
-        tokenizer = BertTokenizer.from_pretrained('bert-large-uncased')
-        model = BertForMaskedLM.from_pretrained('bert-large-uncased')
-    elif model_type=='roberta':
-        tokenizer = RobertaTokenizer.from_pretrained('roberta-large')
-        model = RobertaForMaskedLM.from_pretrained('roberta-large')
-    elif model_type=='gpt':
-        tokenizer = OpenAIGPTTokenizer.from_pretrained('openai-gpt')
-        model = OpenAIGPTLMHeadModel.from_pretrained('openai-gpt')
-    elif model_type=='gpt-2':
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2-medium')
-        model = GPT2LMHeadModel.from_pretrained('gpt2-medium')
-
-    model.to('cuda')
-    model.eval()
-
-    if robust=='r':
-        with open("CATS/Robust_commonsense_test/{}.txt".format(test), "r") as f:
-            file = f.readlines()
-        num = len(file)
-        count = 0
-        curr = 0
-        for line in file:
-            line = line.strip().split("\001")
-            label_1 = int(line[0])
-            label_2 = int(line[3])
-            score_list = []
-            for sentence in line:
-                if not len(sentence)==1:
-                    if model_type=='xlnet':
-                        score = xlnet_predict(sentence, model=model, tokenizer=tokenizer)
-                    elif model_type=='bert':
-                        score = bert_predict(sentence, model=model, tokenizer=tokenizer)
-                    elif model_type=='roberta':
-                        score = ro_predict(sentence, model=model, tokenizer=tokenizer)
-                    else:
-                        score = uni_predict(sentence, model=model, tokenizer=tokenizer)
-                    score_list.append(score)
-            #print(score_list)
-            score_list_1 = score_list[:2]
-            score_list_2 = score_list[2:]
-            predict_label_1 = score_list_1.index(max(score_list_1))
-            predict_label_2 = score_list_2.index(max(score_list_2))
-            if predict_label_1==label_1 and predict_label_2==label_2:
-                count += 1
-            elif predict_label_1!=label_1 and predict_label_2!=label_2:
-                count += 1
-            curr += 1
-            #print (count, curr, count/curr)
-        print(test+' '+model_type+':-------------------')
-        print (count/num)
-    else:
-        with open("CATS/commonsense_ability_test/{}.txt".format(test), "r") as f:
-            file = f.readlines()
-        num = len(file)
-        count = 0
-        curr = 0
-        for line in file:
-            line = line.strip().split("\001")
-            label = int(line[0])
-            score_list = []
-            for sentence in line[1:]:
-                if model_type=='xlnet':
-                    score = xlnet_predict(sentence, model=model, tokenizer=tokenizer)
-                elif model_type=='bert':
-                    score = bert_predict(sentence, model=model, tokenizer=tokenizer)
-                elif model_type=='roberta':
-                    score = ro_predict(sentence, model=model, tokenizer=tokenizer)
-                else:
-                    score = uni_predict(sentence, model=model, tokenizer=tokenizer)
-                score_list.append(score)
-            #print(score_list)
-            predict_label = score_list.index(max(score_list))
-            #print(predict_label, label)
-            if predict_label==label:
-                count += 1
-            curr += 1
-            #print (count, curr, count/curr)
-        print(test+' '+model_type+':-------------------')
-        print (count/num)
