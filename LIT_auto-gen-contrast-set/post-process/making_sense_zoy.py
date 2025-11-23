@@ -60,32 +60,53 @@ def score_masked_lm(text, model, tokenizer):
 
 def score_gguf(text, llm, tokenizer=None):
     """
-    Scoring for GGUF models using llama-cpp-python.
-    We ask the model to 'echo' the prompt and return the log-probs of the tokens it just read.
+    Optimized scoring for GGUF models using low-level eval().
+    Bypasses the expensive sorting of 200k vocab logits.
     """
     if not text.strip():
         return -math.inf
-    # logprobs=1 tells the model to return the log-probability of the actual token
-    # echo=True tells it to process the prompt itself
-    # max_tokens=0 prevents it from generating NEW text
-    output = llm(
-        text,
-        max_tokens=0,
-        logprobs=1,
-        echo=True,
-        temperature=0.0 # Deterministic
-    )
+
     try:
-        token_logprobs = output['choices'][0]['logprobs']['token_logprobs']
-        # The first token usually has 'None' logprob because it has no context
-        valid_logprobs = [lp for lp in token_logprobs if lp is not None]
-        if not valid_logprobs:
+        # 1. Tokenize
+        # add_bos=True is important for the start of the sentence
+        tokens = llm.tokenize(text.encode("utf-8"), add_bos=True)
+        if len(tokens) <= 1:
             return -math.inf
-        # Calculate average log-likelihood (equivalent to negative loss)
-        score = sum(valid_logprobs) / len(valid_logprobs)
-        return score
+
+        # 2. Reset and Evaluate
+        # We clear the KV cache to ensure no contamination from previous sentences
+        llm.reset()
+        llm.eval(tokens)
+
+        # 3. Extract Logits
+        # llm._scores contains raw logits [n_tokens, vocab_size]
+        # We convert to numpy to do fast math
+        logits = np.array(llm._scores[:len(tokens)])
+
+        # 4. Calculate Perplexity (Shifted)
+        # We predict token[i+1] given context[0...i]
+        # Logits for pos 0 predict token 1, etc.
+        preds = logits[:-1]      # Predictions at step 0..N-1
+        targets = tokens[1:]     # Actual tokens at step 1..N
+        log_likelihood = 0.0
+
+        for i, target_id in enumerate(targets):
+            token_logits = preds[i]
+            # Optimized Log-Softmax (Stable)
+            # This avoids sorting the whole vocab!
+            max_logit = np.max(token_logits)
+            norm_logits = token_logits - max_logit
+            log_sum_exp = np.log(np.sum(np.exp(norm_logits)))
+            # Log Prob = (Logit - Max) - LogSumExp
+            token_log_prob = norm_logits[target_id] - log_sum_exp
+            log_likelihood += token_log_prob
+        return log_likelihood / len(targets)
+
     except Exception as e:
-        logger.error(f"GGUF Scoring Error: {e}")
+        print(f"GGUF Scoring Error: {e}")
+        # Reset on error to be safe
+        try: llm.reset()
+        except: pass
         return -math.inf
 
 def uni_predict(text, model, tokenizer):

@@ -107,87 +107,56 @@ def sample(data, sample):
     random.shuffle(data)
     return data[:sample]
 
-def select_best_orig(data, model, tokenizer, predictor):
-    cleaned_data = []
-    for idx, entry in enumerate(data):
-        cleaned_entry = defaultdict(lambda: defaultdict(str))
-        cleaned_entry["gold_label"] = entry["gold_label"]
-        for sent in ["sentence1", "sentence2"]:
-            if isinstance(entry[sent], str):
-                cleaned_entry[sent][ORI] = entry[sent]
-                continue
-            for form, results in entry[sent].items():
-                if any([(tense in form) for tense in ["future", "present", "past"]]) and not entry[sent][ORI][0]["aspect"] in form:
-                    continue
-                if not isinstance(results, str):
-                    if len(results) > 1:
-                        results = [r["surface"] for r in results]
-                        scores = [predictor(r, model, tokenizer) for r in results]
-                        results = results[np.argmax(scores)]
-                    else:
-                        results = results[0]["surface"]
-                if not results:
-                    continue
-                cleaned_entry[sent][form] = results
-        cleaned_data.append(cleaned_entry)
-        print("processed " + str(idx) + "/" + str(len(data)), end="\r")
-    return cleaned_data
-
 def select_best(data, model, tokenizer, predictor):
     cleaned_data = []
     for idx, entry in enumerate(data):
         cleaned_entry = defaultdict(lambda: defaultdict(str))
         cleaned_entry["gold_label"] = entry["gold_label"]
+
         for sent in ["sentence1", "sentence2"]:
-            # If the sentence field is missing or empty, skip
-            if sent not in entry:
-                continue
+            if sent not in entry: continue
 
-            # Handle "original" text (usually a simple string)
+            # Handle legacy string inputs (no variations)
             if isinstance(entry[sent], str):
-                cleaned_entry[sent][ORI] = entry[sent]
+                cleaned_entry[sent][ORI] = {'surface': entry[sent]}
                 continue
 
-            # Handle variations (passive, negation, etc.)
-            # entry[sent] is a dictionary like {"original": "...", "passive": [...]}
             for form, results in entry[sent].items():
-                # Skip if results is empty/None
-                if not results:
+                if not results: continue
+
+                if form == ORI:
+                    # Case 1: It's a list containing a dict (Ideal case from generator)
+                    if isinstance(results, list) and len(results) > 0 and isinstance(results[0], dict):
+                        cleaned_entry[sent][ORI] = results[0]
+                    # Case 2: It's already a dict
+                    elif isinstance(results, dict):
+                        cleaned_entry[sent][ORI] = results
+                    # Case 3: It's a list of strings (Backup: we lost MRS, but keep surface)
+                    elif isinstance(results, list) and len(results) > 0:
+                         cleaned_entry[sent][ORI] = {'surface': str(results[0])}
+                    # Case 4: It's a simple string
+                    elif isinstance(results, str):
+                         cleaned_entry[sent][ORI] = {'surface': results}
                     continue
 
-                # 1. Filter based on tense/aspect logic (Legacy check)
-                if any([(tense in form) for tense in ["future", "present", "past"]]):
-                    # Check if "aspect" exists in original (it might not if your generator simplified the output)
-                    orig_meta = entry[sent].get(ORI)
-                    if isinstance(orig_meta, list) and len(orig_meta) > 0 and isinstance(orig_meta[0], dict):
-                         if "aspect" in orig_meta[0] and not orig_meta[0]["aspect"] in form:
-                             continue
+                candidates = []
+                if isinstance(results, list):
+                    # Extract string from dict if needed
+                    candidates = [r["surface"] if isinstance(r, dict) else str(r) for r in results]
+                elif isinstance(results, dict) and "surface" in results:
+                     candidates = [results["surface"]]
+                elif isinstance(results, str):
+                     candidates = [results]
 
-                # 2. Select the best sentence from the list
-                if not isinstance(results, str):
-                    # Determine if data is [String] (New) or [Dict] (Old)
-                    first_item = results[0]
+                if not candidates: continue
 
-                    if isinstance(first_item, str):
-                        candidates = results
-                    elif isinstance(first_item, dict) and "surface" in first_item:
-                        candidates = [r["surface"] for r in results]
-                    else:
-                        # Fallback for unknown types
-                        candidates = [str(r) for r in results]
+                if len(candidates) > 1:
+                    scores = [predictor(r, model, tokenizer) for r in candidates]
+                    best_str = candidates[np.argmax(scores)]
+                else:
+                    best_str = candidates[0]
 
-                    # Run the language model predictor to pick the best one
-                    if len(candidates) > 1:
-                        scores = [predictor(r, model, tokenizer) for r in candidates]
-                        best_sentence = candidates[np.argmax(scores)]
-                    else:
-                        best_sentence = candidates[0]
-
-                    results = best_sentence
-
-                if not results:
-                    continue
-                cleaned_entry[sent][form] = results
+                cleaned_entry[sent][form] = best_str
 
         cleaned_data.append(cleaned_entry)
         print("processed " + str(idx) + "/" + str(len(data)), end="\r")
@@ -210,85 +179,89 @@ def apply_rules(cleaned_data, rules):
         label = entry["gold_label"]
         sent1 = entry["sentence1"]
         sent2 = entry["sentence2"]
-        assert type(sent1) is dict and type(sent2) is dict
-        assert ORI in sent1 and ORI in sent2
-        assert type(sent1[ORI]) is dict and type(sent2[ORI]) is dict
 
-        final_entry["0"] = "\t".join([label, sent1[ORI]["surface"], sent2[ORI]["surface"]])
+        if not isinstance(sent1, dict) or not isinstance(sent2, dict): continue
+        if ORI not in sent1 or ORI not in sent2: continue
+
+        # Robust extraction of surface text
+        s1_obj = sent1[ORI]
+        s2_obj = sent2[ORI]
+
+        s1_orig = s1_obj['surface'] if isinstance(s1_obj, dict) else str(s1_obj)
+        s2_orig = s2_obj['surface'] if isinstance(s2_obj, dict) else str(s2_obj)
+
+        if not isinstance(s1_orig, str) or not isinstance(s2_orig, str):
+            continue
+
+        final_entry["0"] = "\t".join([label, s1_orig, s2_orig])
         if "genre" in entry:
             final_entry["genre"] = entry["genre"]
 
-        # if one of the two sentence can not be parsed, then continue
-        if len(sent1) == 1 or len(sent2) == 1:
-            final_data.append(final_entry)
-            continue
-        assert "mrs" in sent1[ORI] and "mrs" in sent2[ORI]
-        assert type(sent1[ORI]['mrs']) is dict and type(sent2[ORI]['mrs']) is dict
-        # print(sent1.keys())
-        # print(sent2.keys())
+        # Attempt to load MRS for tense rules
+        mrs1, mrs2 = None, None
+        try:
+            if isinstance(s1_obj, dict) and 'mrs' in s1_obj:
+                mrs1 = simplemrs.decode(s1_obj['mrs'])
+            if isinstance(s2_obj, dict) and 'mrs' in s2_obj:
+                mrs2 = simplemrs.decode(s2_obj['mrs'])
+        except Exception:
+            pass # Just ignore MRS errors
 
-        mrs1 = mrsjson.from_dict(sent1[ORI]['mrs'])
-        mrs2 = mrsjson.from_dict(sent2[ORI]['mrs'])
+        for rule_str, ridx in rules.items():
+            parts = rule_str.split(";")
+            if len(parts) != 3: continue
+            orig_label_req, trans1_req, trans2_req = parts
 
-        for rule, ridx in rules.items():
-            if ridx in ["1a", "1b"]:
-                # if the current rule is tense, and the sentence pair are not both in present tense, move on
-                if get_tense(mrs1) != "present" or get_tense(mrs2) != "present":
-                    continue
-
-            match1, match2 = None, None
-            orig_label, trans1, trans2 = rule.split(";")
-
-            for k1 in sent1.keys():
-                phenomena = trans1.split("+")
-                # if "+" in trans1:
-                #     print("trans1")
-                assert len(phenomena) <= 2
-                if len(phenomena) == 2:
-                    # so far, we consider one label-preserving phenomenon + one label-changing phenomenon
-                    assert any(any(t in phenomenon for t in preserving_rule_types) for phenomenon in phenomena)
-
-                if all(p in k1 for p in phenomena):
-                    # make sure all the key words in this rule are in the sentence transformation name
-                    match1 = k1
-                    break
-
-            for k2 in sent2.keys():
-                phenomena = trans2.split("+")
-                # if "+" in trans2:
-                #     print("trans2")
-                assert len(phenomena) <= 2
-                if len(phenomena) == 2:
-                    # so far, we consider one label-preserving phenomenon + one label-changing phenomenon
-                    assert any(any(t in phenomenon for t in preserving_rule_types) for phenomenon in phenomena)
-
-                if all(b in k2 for b in phenomena):
-                    # make sure all the key words in this rule are in the sentence transformation name
-                    match2 = k2
-                    break
-            if not (match1 and match2):
-                # if we didn't find a matched transformation pair
-                continue
-
-            if orig_label == "*":
-                new_label = label
-            elif orig_label == label:
+            # 1. Check Label Constraint
+            new_label = label
+            if orig_label_req == "*":
+                pass
+            elif orig_label_req == label:
                 new_label = "neutral"
             else:
                 continue
-            if match1 == ORI:
-                s1 = sent1[ORI]["surface"]
+
+            # 2. Check Tense Constraint (Only if MRS is available)
+            if ridx in ["1a", "1b"]:
+                # If we don't have MRS, we MUST skip this rule to be safe
+                if not mrs1 or not mrs2: continue
+                if get_tense(mrs1) != "present" or get_tense(mrs2) != "present":
+                    continue
+
+            # 3. Find Matching Transformations
+            match1 = None
+            if trans1_req == ORI:
+                match1 = ORI
             else:
-                s1 = sent1[match1]
+                reqs = trans1_req.split("+")
+                for k1 in sent1.keys():
+                    if k1 != ORI and all(r in k1 for r in reqs):
+                        match1 = k1
+                        break
 
-            if match2 == ORI:
-                s2 = sent2[ORI]["surface"]
+            match2 = None
+            if trans2_req == ORI:
+                match2 = ORI
             else:
-                s2 = sent2[match2]
+                reqs = trans2_req.split("+")
+                for k2 in sent2.keys():
+                    if k2 != ORI and all(r in k2 for r in reqs):
+                        match2 = k2
+                        break
 
-            final_entry[ridx] = "\t".join([new_label, s1, s2])
+            # 4. If both found, add to entry
+            if match1 and match2:
+                s1_text = sent1[match1] if match1 != ORI else s1_orig
+                s2_text = sent2[match2] if match2 != ORI else s2_orig
 
-        final_data.append(final_entry)
+                # Ensure we aren't adding empty strings
+                if s1_text and s2_text:
+                    final_entry[ridx] = "\t".join([new_label, s1_text, s2_text])
+
+        # Only save if we actually generated a contrast set (more than just "0")
+        if len(final_entry) > (2 if "genre" in final_entry else 1):
+            final_data.append(final_entry)
+
     return final_data
 
 def read_jsonl(filepath: str):
@@ -370,13 +343,15 @@ def main():
         type=str,
         help="One of snli, sts, tc, mnli",
     )
-    SPLITS = ["test", "dev"]
+    SPLITS = ["test", "dev", "train"]
 
     args = parser.parse_args()
 
     if args.model_type not in MODEL_CONFIGS:
         raise ValueError(f"Model type {args.model_type} not found in MODEL_CONFIGS")
+
     model_class, predictor = MODEL_CONFIGS[args.model_type]
+
     if args.model_type == "gguf":
         tokenizer = None # GGUF has internal tokenizer
         model = model_class(
@@ -389,9 +364,8 @@ def main():
     else:
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         # Fix padding token issues for Llama/Mistral
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            model = model_class.from_pretrained(
+        if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+        model = model_class.from_pretrained(
             args.model_name,
             torch_dtype=torch.float16,
             device_map="auto"
@@ -404,83 +378,61 @@ def main():
     else:
         paths = [args.data_path]
 
-    data = []
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, "basic"), exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, "compositional"), exist_ok=True)
+
     for path in paths:
-        with open(path) as file:
-            for line in file:
-                data.append(json.loads(line.strip()))
-    print(f"Zoy Debug: json line count: {len(data)}")
-    print(f"Zoy Debug: json data: {data}")
-    data = sample(data, args.sample)
-    cleaned_data = select_best(data, model, tokenizer, predictor)
-    if args.write_text:
-        wirte_readable_text(cleaned_data, args.output_dir)
-    basic_rules = ["1a", "1b", "2a", "2b", "3a", "3b", "4", "5"]
-    comp_rules = ["7a", "7b", "8a", "8b", "9a", "9b"]
-    #rules = {v: k for k, v in json.load(open("/home/lzy/proj/AnalyzingNeuralLMs/datasets/final_snli/rules.json")).items()}
-    target_rules = ALL_RULES[args.task]
-    rules = {v: k for k, v in target_rules.items()}
-    sent1_trans = [r.split(";")[1] for r in rules.values()]
-    sent2_trans = [r.split(";")[2] for r in rules.values()]
-    for path in paths:
-        if not any(s in path for s in SPLITS):
-            continue
-        index = [split in path for split in SPLITS].index(True)
-        result_filename = SPLITS[index]
+        result_filename = "unknown"
+        for s in SPLITS:
+            if s in path:
+                result_filename = s
+                break
+
         raw_data = read_jsonl(path)
-        print(f"Filtering {result_filename} with {args.model_type}...")
+        print(f"Filtering {result_filename} ({len(raw_data)} items) with {args.model_type}...")
+        print(f"ERG raw data: {raw_data}")
+
+        # 1. Filter best sentences (Run GGUF LM scoring)
         cleaned_data = select_best(raw_data, model, tokenizer, predictor)
-        sent1_stats = {}
-        sent2_stats = {}
-        for d in cleaned_data:
-            sent1 = d["sentence1"]
-            sent2 = d["sentence2"]
-            for k in sent1.keys():
-                if k not in sent1_stats:
-                    sent1_stats[k] = 0
-                sent1_stats[k] += 1
+        print(f"Cleaned best data: {cleaned_data}")
 
-            for k in sent2.keys():
-                if k not in sent2_stats:
-                    sent2_stats[k] = 0
-                sent2_stats[k] += 1
-
-        print(f"sentence1: {sent1_stats}")
-        print(f"sentence2: {sent2_stats}")
-        print()
+        # 2. Apply Logic Rules
         final_data = apply_rules(cleaned_data, ALL_RULES[args.task])
+        print(f"Applied rules final data: {final_data}")
+
+        # 3. Save Results
         pickle.dump(final_data, open(os.path.join(args.output_dir, result_filename), "wb"))
 
-        # now we created dataset, we then split the dataset into basic and compositional
-        basic_data = []
-        comp_data = []
+        # 4. Split Basic vs Compositional
+        basic_data, comp_data = [], []
+        basic_rules = ["1a", "1b", "2a", "2b", "3a", "3b", "4", "5"]
+        comp_rules = ["7a", "7b", "8a", "8b", "9a", "9b"]
+
         for d in final_data:
-            assert "0" in d
-            basic_d = {"0": d["0"]}
-            comp_d = {"0": d["0"]}
-            if "genre" in d:
-                basic_d["genre"] = d["genre"]
-                comp_d["genre"] = d["genre"]
-            if "genre" not in d and len(d) == 1 or "genre" in d and len(d) == 2:
-                basic_data.append(basic_d)
-                comp_data.append(comp_d)
-                continue
+            basic_d = {"0": d.get("0")}
+            comp_d = {"0": d.get("0")}
+            has_basic, has_comp = False, False
 
             for r in basic_rules:
                 if r in d:
                     basic_d[r] = d[r]
-            basic_data.append(basic_d)
+                    has_basic = True
 
             for r in comp_rules:
                 if r in d:
                     comp_d[r] = d[r]
-            comp_data.append(comp_d)
-        assert len(basic_data) == len(comp_data) == len(final_data)
-        pickle.dump(basic_data, open(os.path.join(f"{args.output_dir}/basic/", result_filename), "wb"))
-        pickle.dump(comp_data, open(os.path.join(f"{args.output_dir}/compositional/", result_filename), "wb"))
+                    has_comp = True
 
-    # write_to_file(final_data, args.output_dir, args.divide_data)
-    # json.dump(ALL_RULES[args.task], open(f"{args.output_dir}/rules.json", "w"))
+            if has_basic: basic_data.append(basic_d)
+            if has_comp: comp_data.append(comp_d)
+
+        print(f"Split basic data: {basic_data}")
+        print(f"Split compositional data: {comp_data}")
+        pickle.dump(basic_data, open(os.path.join(args.output_dir, "basic", result_filename), "wb"))
+        pickle.dump(comp_data, open(os.path.join(args.output_dir, "compositional", result_filename), "wb"))
+
+        print(f"All done, saved {len(final_data)} entries to {result_filename} (Basic: {len(basic_data)}, Comp: {len(comp_data)})")
 
 if __name__ == "__main__":
     main()
