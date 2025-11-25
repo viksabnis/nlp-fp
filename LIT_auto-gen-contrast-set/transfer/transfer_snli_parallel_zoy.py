@@ -5,93 +5,137 @@ import copy
 import argparse
 import subprocess
 from tqdm import tqdm
-#from transfer import transfer
-from ergtransfer import transfer
+from ergtransfer_zoy import transfer
+from delphin.ace import ACEParser, ACEGenerator
 
 parser = argparse.ArgumentParser("Generating sentences using ERG")
 parser.add_argument("--data_dir", type=str, default=f"{os.getcwd()}/../../datasets/snli_1.0")
-parser.add_argument("--target_data_dir", type=str, default=f"{os.getcwd()}/../../datasets/aug_snli_1.0")
+parser.add_argument("--target_data_dir", type=str, default=f"{os.getcwd()}/../../datasets/erg_snli_1.0")
 parser.add_argument("--tenses", nargs='+', default=['past', 'pres', 'fut'])
 parser.add_argument("--modalities", nargs='+', default=['_may_v_modal'])
 parser.add_argument("--progs", nargs='+', default=['+', '-'])
-parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-1214-x86-64-0.9.34.dat")
+#parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-1214-x86-64-0.9.34.dat")
+parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-2025-x86-64-0.9.34.dat")
 parser.add_argument("--ace_path", type=str, default=f"{os.getcwd()}/../ace-0.9.34-zoy-build/ace")
-parser.add_argument("--checkpoint_period", type=int, default=200)
-parser.add_argument("--timeout", type=int, default=3)
+parser.add_argument("--checkpoint_period", type=int, default=10)
+parser.add_argument("--timeout", type=int, default=10)
 
 
 def read_snli(file_path):
-    """
-
-    :param data_dir: path to snli directory
-    :return: return a dictionary like <"train": [train examples]>
-    """
-    extracted_fields = ['gold_label',
-                        'sentence1', 'sentence2', 'pairID', 'captionID']
+    extracted_fields = ['gold_label', 'sentence1', 'sentence2', 'pairID', 'captionID']
     data = []
     with open(file_path, "r") as f:
         for line in f:
-            json_obj = json.loads(line)
-            added_obj = {}
-            for field in extracted_fields:
-                added_obj[field] = json_obj[field]
-            data.append(added_obj)
-    return data[:3]
+            try:
+                json_obj = json.loads(line)
+                s1 = json_obj.get('sentence1', '')
+                s2 = json_obj.get('sentence2', '')
+                # skip long sentences to prevent ACE hangs
+                if len(s1.split()) > 16 or len(s2.split()) > 16:
+                    continue
+                added_obj = {k: json_obj[k] for k in extracted_fields}
+                data.append(added_obj)
+            except: continue
+    return data
 
 
 def parse_file(x):
     args, filename, workerid = x
+
+    # 1. Setup Logging
     log_file_path = f"{args.target_data_dir}/log_worker_{workerid:02d}.txt"
-    f = open(log_file_path, 'w')
-    # FLUSH Python's current buffers to avoid mixed order output
+    f_log = open(log_file_path, 'w')
     sys.stdout.flush()
     sys.stderr.flush()
-    # OS-Level Redirection overrides File Descriptor 1 (stdout) and 2 (stderr) with your file.
-    # C binaries like ACE have no choice but to write to your file.
-    os.dup2(f.fileno(), 1)
-    os.dup2(f.fileno(), 2)
-    print(f"Zoy Debug: worker {workerid} started, processing {filename}")
+    os.dup2(f_log.fileno(), 1) # stdout -> file
+    os.dup2(f_log.fileno(), 2) # stderr -> file
+    print(f"Zoy Debug: Worker {workerid} initializing persistent ACE processes...")
+
+    # 2. Initialize Persistent ACE Processes
+    # Open them ONCE per worker, not once per sentence
+    try:
+        ace_parser = ACEParser(
+            args.grm_path,
+            executable=args.ace_path,
+            cmdargs=['--timeout', str(args.timeout), '--disable-generalization']
+        )
+
+        ace_generator = ACEGenerator(
+            args.grm_path,
+            executable=args.ace_path,
+            cmdargs=['--timeout', str(args.timeout), '--disable-generalization',
+            '-n', '64']  # STOP after finding 64 valid sentences to save time
+        )
+    except Exception as e:
+        print(f"Error starting ACE: {e}")
+        return False
+
     data = read_snli(f"{args.data_dir}/{filename}")
     statistics = {'unparsed_sentence': 0, "timeout": 0}
-    aug_data = []
-    target_file_name = f"{args.target_data_dir}/aug_{filename}"
+    erg_data = []
+    target_file_name = f"{args.target_data_dir}/erg_{filename}"
 
-    for i, datum in enumerate(data):
-        aug_datum = copy.deepcopy(datum)
-        # print(f"Worker: {workerid}, {i}")
-        for idx in ['1', '2']:
-            sentence = datum[f'sentence{idx}']
-            aug_sentence = {'original': sentence}
-            transforms = transfer(sentence, args.grm_path, args.ace_path,
-                                  timeout=args.timeout,
-                                  tenses=args.tenses,
-                                  progs=args.progs, perfs=[])
-            if transforms is None or len(transforms) == 0:
-                statistics["unparsed_sentence"] += 1
-                continue
-            elif "timeout" in transforms:
-                statistics["timeout"] += 1
-                continue
+    print(f"Worker {workerid} processing {len(data)} items...")
 
-            for trans_type in transforms:
-                aug_sentence[trans_type] = [t['surface'] for t in transforms[trans_type]]
+    try:
+        for i, datum in enumerate(data):
+            erg_datum = copy.deepcopy(datum)
+            for idx in ['1', '2']:
+                sentence = datum[f'sentence{idx}']
+                erg_sentence = {'original': sentence}
+                # Pass the persistent instances to the transfer function
+                transforms = transfer(
+                    sentence, args.grm_path, args.ace_path,
+                    timeout=args.timeout,
+                    tenses=args.tenses,
+                    progs=args.progs,
+                    perfs=[],
+                    parser=ace_parser,
+                    generator=ace_generator
+                )
 
-            aug_datum[f'sentence{idx}'] = aug_sentence
-        aug_data.append(aug_datum)
+                if transforms is None or len(transforms) == 0:
+                    statistics["unparsed_sentence"] += 1
+                    continue
+                elif "timeout" in transforms:
+                    statistics["timeout"] += 1
+                    continue
 
-        if (i + 1) % args.checkpoint_period == 0:
-            print(f"{i + 1}th datum: Worker {workerid} saving.....")
-            with open(target_file_name, 'w') as outfile:
-                for aug_datum in aug_data:
-                    json.dump(aug_datum, outfile)
-                    outfile.write('\n')
+                for trans_type in transforms:
+                    # Handle original specially to keep MRS
+                    if trans_type == 'original':
+                        erg_sentence[trans_type] = transforms[trans_type]
+                    else:
+                        erg_sentence[trans_type] = [t['surface'] for t in transforms[trans_type]]
 
+                erg_datum[f'sentence{idx}'] = erg_sentence
+            erg_data.append(erg_datum)
+
+            # Checkpoint
+            if (i + 1) % args.checkpoint_period == 0:
+                print(f"Worker {workerid}: Processed {i + 1}/{len(data)}")
+                with open(target_file_name, 'w') as outfile:
+                    for d in erg_data:
+                        json.dump(d, outfile)
+                        outfile.write('\n')
+                        outfile.flush()
+
+    except Exception:
+        traceback.print_exc()
+    finally:
+        # 3. Clean up processes
+        print(f"Worker {workerid} closing ACE processes.")
+        ace_parser.close()
+        ace_generator.close()
+        f_log.close()
+
+    # Final Write
     with open(target_file_name, 'w') as outfile:
-        for aug_datum in aug_data:
-            json.dump(aug_datum, outfile)
+        for d in erg_data:
+            json.dump(d, outfile)
             outfile.write('\n')
-    with open(f"{args.target_data_dir}/"
-              f"parse_stats_{'.'.join(filename.split('.')[:-1])}.json", 'w') as outfile:
+            outfile.flush()
+    with open(f"{args.target_data_dir}/parse_stats_{filename.replace('.jsonl','')}.json", 'w') as outfile:
         json.dump(statistics, outfile)
 
     return True
@@ -143,22 +187,35 @@ if __name__ == "__main__":
     import traceback
 
     args = parser.parse_args()
-    print("Zoy Debug: reading all SNLI 1.0 data splits")
     if not os.path.exists(args.target_data_dir):
         os.mkdir(args.target_data_dir)
     data_file_prefix = "snli_1.0"
     #splits = ["train", "dev", "test"]
-    splits = ["test"]
-    num_division = 1
+    splits = ["zoy"]
+    num_division = 20
     pool = multiprocessing.Pool(processes=num_division)
-    for split in tqdm(splits[:1]):
+    for split in splits:
+        print(f"Zoy Debug: processing split: {split}")
         check_and_split_dataset(args.data_dir, data_file_prefix, split, num_division)
         parallel_inputs = [(args, f"{data_file_prefix}_{split}_{i:02d}.jsonl", i) for i in range(num_division)]
-        print(f"Zoy Debug: parallel_inputs={parallel_inputs}")
+        print(f"Zoy Debug: parallel_inputs: {parallel_inputs}")
         try:
-            outputs = pool.map(parse_file, parallel_inputs)
-            assert all(outputs)
+            results = list(tqdm(
+                pool.imap_unordered(parse_file, parallel_inputs),
+                total=len(parallel_inputs),
+                desc=f"Processing {split} chunks",
+                unit="file"
+            ))
+            if not all(results):
+                print("Zoy Debug: one or more workers returned False and need to check logs")
+        except KeyboardInterrupt:
+            print("\nZoy Debug: keyboardInterrupt caught, terminating pool...")
+            pool.terminate()
+            pool.join()
+            sys.exit(1)
         except Exception as e:
             print(f"Zoy Debug: main process error: {e}")
             traceback.print_exc()
+    pool.close()
+    pool.join()
     print("Zoy Debug: All finish")
