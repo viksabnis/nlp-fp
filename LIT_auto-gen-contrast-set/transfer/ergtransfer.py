@@ -11,13 +11,16 @@ from delphin.ace import ACEParser, ACEGenerator
 from delphin.codecs import simplemrs
 from re import findall, sub, search
 TIMEOUT = 5
+import traceback
 
 
 def swap_subj(orig_sem, index_ep):
+    # print('index' + repr(index_ep))
     if index_ep.args.get('ARG2'):
         new_args = index_ep.args.copy()
         new_vars = copy_vars(orig_sem)
         new_rels = orig_sem.rels[:]
+        # print('1 ' + repr(new_rels))
         # swap ARG1 and ARG2
         new_args['ARG1'] = index_ep.args['ARG2']
         new_args['ARG2'] = index_ep.args['ARG1']
@@ -32,6 +35,9 @@ def swap_subj(orig_sem, index_ep):
         # update index_ep
         new_rels.remove(index_ep)
         new_rels.append(new_ep)
+    else:
+        new_vars = copy_vars(orig_sem)
+        new_rels = orig_sem.rels[:]
 
     new_sem = copy_sem(orig_sem,
                        rels=new_rels,
@@ -82,6 +88,8 @@ def negate_ep(orig_sem, ep):
     :rtype  MRS
     '''
     new_rels = orig_sem.rels[:]
+    # print('2 ' + repr(new_rels))
+
     new_hcons = orig_sem.hcons[:]
     new_vars = copy_vars(orig_sem)
     last_vid = get_max_vid(orig_sem)
@@ -126,6 +134,7 @@ def negate_subj_Q(orig_sem, i, subj):
     :rtype  MRS
     '''
     new_rels = orig_sem.rels[:]
+    # print('3 ' + repr(new_rels))
     new_vars = copy_vars(orig_sem)
 
     new_rels[i] = copy_ep(new_rels[i], predicate='_no_q')
@@ -213,6 +222,7 @@ def itcleft(orig_sem, ep):
         handle is the handle of original index EP
         '''
         new_rels = orig_sem.rels[:]
+        # print('4 ' + repr(new_rels))
         new_hcons = orig_sem.hcons[:]
         new_vars = copy_vars(orig_sem)
 
@@ -264,6 +274,7 @@ def passive(orig_sem, ep, arg_id=None):
     def passive_arg(orig_sem, ep, arg_id):
         ''' return a MRS with ep passivised with arg_id as syntactic specifier '''
         new_rels = orig_sem.rels[:]
+        # print('5 ' + repr(new_rels))
         new_vars = copy_vars(orig_sem)
         parg = ep.args[arg_id]
 
@@ -343,7 +354,9 @@ def modality(orig_sem, ep, modalities):
         new_sem = replace_handle(orig_sem, ep.label, modal_label)
 
         new_index = new_sem.index
+        # print('6 ' + repr(new_rels))
         new_rels = new_sem.rels[:]
+        # print('6 ' + repr(new_rels))
         new_hcons = new_sem.hcons[:]
         new_vars = copy_vars(new_sem)
 
@@ -496,6 +509,7 @@ def copy_ep(orig_ep, predicate=None, label=None, args=None):
 def replace_handle(orig_sem, orig_h, new_h):
     ''' replace all occurences of orig_h with new_h in orig_sem '''
     new_rels = orig_sem.rels[:]
+    # print('7 ' + repr(new_rels))
     new_hcons = orig_sem.hcons.copy()
 
     for i, ep in enumerate(new_rels):
@@ -548,7 +562,6 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
         if is_it_cleft(): no negation, it cleft, passive
         if is_passive(): no it cleft, passive
         '''
-        print("here 1")
         if is_conjunction(ep):
             return {}
         if is_unknown(ep):
@@ -556,12 +569,12 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
         if is_question(orig_sem):
             return {}
 
-        print("here 2")
         if not tenses:
             tenses = ['past', 'pres', 'fut']
         if not modalities:
             modalities = ['may', ]  # 'might', 'must',
             # 'should', 'would', 'can', 'could', 'gotta']
+        # print('here 1')
         modalities = [f'_{x}_v_modal' for x in modalities]
         rules_pool = {0: lambda x: negation(x, ep),
                       1: lambda x: tense_aspect(x, ep.args['ARG0'], tenses=tenses, progs=progs, perfs=perfs),
@@ -596,21 +609,30 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
             rules = pop_all(rules, [0])
 
         return rules
-
     simp_trans_sems = {}
     comp_trans_sems = {}
     # trans_sems = {}
     transforms = {}
+    # print('here 2')
     # set timeout here to avoid waiting too long to parse
     if not parsed_sem:
         try:
             orig = get_best_parse(orig_sent, grm, ace, timeout)
+            # print('orig:' + orig )
             if not orig:
+                # print('no orig')
                 return
+            # print('here 3')
             orig_sem = orig.mrs()
-        except:
+            # print('here 5' + repr(orig_sem))
+        except Exception as e:
+            # print(traceback.format_exc())
+
+            # print("exception")
+            print('except:' + repr(e))
             return {'timeout': 1}
     else:
+        # print('her 4')
         orig_sem = parsed_sem
 
     # mrs_enc = simplemrs.encode(orig.mrs(), indent=True)
@@ -622,14 +644,18 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
     qeqs = get_qeqs(orig_sem)
     index_ep = get_index_ep(orig_sem)
     if index_ep is None:
+        # print('here 2')
         return {}
 
     rules = get_trans_list(orig_sem, qeqs, index_ep, rules=rules,
                            tenses=tenses, progs=progs, perfs=perfs, modalities=modalities)
     try:
         for r in rules.values():
+            # print('here again ' + repr(r))
             simp_trans_sems.update(r(orig_sem))
-    except:
+    except Exception as e:
+        # print(traceback.format_exc())
+        print('here execepasdf' + repr(e))
         return {}
     for trans_type, s in simp_trans_sems.items():
         if trans_type == 'native':
@@ -646,7 +672,7 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
                 comp_trans_sems[f'{trans_type}+{comp_type}'] = comp_sem
 
     simp_trans_sems.update(comp_trans_sems)
-
+    # print("here mid")
     for trans_type in simp_trans_sems:
         if trans_type == 'inverted polar question':
             type_transforms = generate(
@@ -658,6 +684,7 @@ def transfer(orig_sent, grm, ace, timeout=TIMEOUT, rules=None, tenses=None, prog
             type_transforms = [{'surface': x['surface']}
                                for x in type_transforms]
             transforms.update({trans_type: type_transforms})
+    # print("here end")
     transforms['original'] = [{
         'surface': orig_sent,
         'mrs': simplemrs.encode(orig_sem)
@@ -677,6 +704,7 @@ def get_best_parse(sent, grm, ace, timeout):
     :rtype Result
     '''
     import os
+    
     with ACEParser(grm, executable=ace, cmdargs=['--timeout', str(timeout)]) as parser:
         results = parser.interact(sent).results()
         if not results:
@@ -701,8 +729,7 @@ def generate(sem, grm, ace, timeout, filter_func=lambda x: True):
     '''
     import os
     sem_enc = simplemrs.encode(sem, lnk=False, indent=True)
-    # with ACEGenerator(grm, executable=ace, cmdargs=['--timeout', str(timeout)]) as generator:
-    with ACEGenerator(grm, executable=ace, cmdargs=[]) as generator:
+    with ACEGenerator(grm, executable=ace, cmdargs=['--timeout', str(timeout)]) as generator:
         try:
             results = generator.interact(sem_enc).results()
         except:

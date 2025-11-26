@@ -1,0 +1,69 @@
+split -n 20 snli_1.0_dev.jsonl snli_1.0_dev
+split -n 20 snli_1.0_test.jsonl snli_1.0_test
+split -n 20 snli_1.0_train.jsonl snli_1.0_train
+
+mv snli_1.0_devaa snli_1.0_dev_00.jsonl
+mv snli_1.0_devab snli_1.0_dev_01.jsonl
+mv snli_1.0_devac snli_1.0_dev_02.jsonl
+mv snli_1.0_devad snli_1.0_dev_03.jsonl
+mv snli_1.0_devae snli_1.0_dev_04.jsonl
+mv snli_1.0_devaf snli_1.0_dev_05.jsonl
+mv snli_1.0_devag snli_1.0_dev_06.jsonl
+mv snli_1.0_devah snli_1.0_dev_07.jsonl
+mv snli_1.0_devai snli_1.0_dev_08.jsonl
+mv snli_1.0_devaj snli_1.0_dev_09.jsonl
+mv snli_1.0_devak snli_1.0_dev_010.jsonl
+mv snli_1.0_deval snli_1.0_dev_011.jsonl
+mv snli_1.0_devam snli_1.0_dev_012.jsonl
+mv snli_1.0_devan snli_1.0_dev_013.jsonl
+mv snli_1.0_devao snli_1.0_dev_014.jsonl
+mv snli_1.0_devap snli_1.0_dev_015.jsonl
+mv snli_1.0_devaq snli_1.0_dev_016.jsonl
+mv snli_1.0_devar snli_1.0_dev_017.jsonl
+mv snli_1.0_devas snli_1.0_dev_018.jsonl
+mv snli_1.0_devat snli_1.0_dev_019.jsonl
+
+
+
+mv snli_1.0_testaa snli_1.0_test_00.jsonl
+mv snli_1.0_testab snli_1.0_test_01.jsonl
+mv snli_1.0_testac snli_1.0_test_02.jsonl
+mv snli_1.0_testad snli_1.0_test_03.jsonl
+mv snli_1.0_testae snli_1.0_test_04.jsonl
+mv snli_1.0_testaf snli_1.0_test_05.jsonl
+mv snli_1.0_testag snli_1.0_test_06.jsonl
+mv snli_1.0_testah snli_1.0_test_07.jsonl
+mv snli_1.0_testai snli_1.0_test_08.jsonl
+mv snli_1.0_testaj snli_1.0_test_09.jsonl
+mv snli_1.0_testak snli_1.0_test_010.jsonl
+mv snli_1.0_testal snli_1.0_test_011.jsonl
+mv snli_1.0_testam snli_1.0_test_012.jsonl
+mv snli_1.0_testan snli_1.0_test_013.jsonl
+mv snli_1.0_testao snli_1.0_test_014.jsonl
+mv snli_1.0_testap snli_1.0_test_015.jsonl
+mv snli_1.0_testaq snli_1.0_test_016.jsonl
+mv snli_1.0_testar snli_1.0_test_017.jsonl
+mv snli_1.0_testas snli_1.0_test_018.jsonl
+mv snli_1.0_testat snli_1.0_test_019.jsonl
+
+
+mv snli_1.0_trainaa snli_1.0_train_00.jsonl
+mv snli_1.0_trainab snli_1.0_train_01.jsonl
+mv snli_1.0_trainac snli_1.0_train_02.jsonl
+mv snli_1.0_trainad snli_1.0_train_03.jsonl
+mv snli_1.0_trainae snli_1.0_train_04.jsonl
+mv snli_1.0_trainaf snli_1.0_train_05.jsonl
+mv snli_1.0_trainag snli_1.0_train_06.jsonl
+mv snli_1.0_trainah snli_1.0_train_07.jsonl
+mv snli_1.0_trainai snli_1.0_train_08.jsonl
+mv snli_1.0_trainaj snli_1.0_train_09.jsonl
+mv snli_1.0_trainak snli_1.0_train_010.jsonl
+mv snli_1.0_trainal snli_1.0_train_011.jsonl
+mv snli_1.0_trainam snli_1.0_train_012.jsonl
+mv snli_1.0_trainan snli_1.0_train_013.jsonl
+mv snli_1.0_trainao snli_1.0_train_014.jsonl
+mv snli_1.0_trainap snli_1.0_train_015.jsonl
+mv snli_1.0_trainaq snli_1.0_train_016.jsonl
+mv snli_1.0_trainar snli_1.0_train_017.jsonl
+mv snli_1.0_trainas snli_1.0_train_018.jsonl
+mv snli_1.0_trainat snli_1.0_train_019.jsonl
