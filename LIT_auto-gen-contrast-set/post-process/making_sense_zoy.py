@@ -89,7 +89,6 @@ def score_gguf(text, llm, tokenizer=None):
         preds = logits[:-1]      # Predictions at step 0..N-1
         targets = tokens[1:]     # Actual tokens at step 1..N
         log_likelihood = 0.0
-
         for i, target_id in enumerate(targets):
             token_logits = preds[i]
             # Optimized Log-Softmax (Stable)
@@ -100,7 +99,10 @@ def score_gguf(text, llm, tokenizer=None):
             # Log Prob = (Logit - Max) - LogSumExp
             token_log_prob = norm_logits[target_id] - log_sum_exp
             log_likelihood += token_log_prob
-        return log_likelihood / len(targets)
+
+        score = log_likelihood / len(targets)
+        print(f"Zoy Debug: text={text}, tokens={tokens}, score={score:.3f}")
+        return score
 
     except Exception as e:
         print(f"GGUF Scoring Error: {e}")

@@ -14,8 +14,8 @@ parser.add_argument("--target_data_dir", type=str, default=f"{os.getcwd()}/../..
 parser.add_argument("--tenses", nargs='+', default=['past', 'pres', 'fut'])
 parser.add_argument("--modalities", nargs='+', default=['_may_v_modal'])
 parser.add_argument("--progs", nargs='+', default=['+', '-'])
-#parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-1214-x86-64-0.9.34.dat")
-parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-2025-x86-64-0.9.34.dat")
+parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-1214-x86-64-0.9.34.dat")
+#parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-2025-x86-64-0.9.34.dat")
 parser.add_argument("--ace_path", type=str, default=f"{os.getcwd()}/../ace-0.9.34-zoy-build/ace")
 parser.add_argument("--checkpoint_period", type=int, default=10)
 parser.add_argument("--timeout", type=int, default=10)
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         os.mkdir(args.target_data_dir)
     data_file_prefix = "snli_1.0"
     #splits = ["train", "dev", "test"]
-    splits = ["zoy"]
+    splits = ["test"]
     num_division = 20
     pool = multiprocessing.Pool(processes=num_division)
     for split in splits:
