@@ -1,7 +1,7 @@
 '''
 Utility for parse, generate and transfer sentences with English Resource Grammar (ERG) and Answer Constraint Engine (ACE) parser. This module assumes 1214 version of ERG, with little to no compatibility with ERG2018. ACE parser provides parsing and generation functionality. This module provides a collection of transfer rules, by operating and inspecting the Minimal Recursion Semantics (MRS) and Head-Driven Phrase Structure Grammar (HPSG) output from ACE parsers.
 '''
-
+import traceback
 from functools import wraps
 import errno
 import os
@@ -15,7 +15,9 @@ TIMEOUT = 5
 
 
 def swap_subj(orig_sem, index_ep):
-    if index_ep.args.get('ARG2'):
+    if not index_ep.args.get('ARG2'):
+        return {}
+    else:
         new_args = index_ep.args.copy()
         new_vars = copy_vars(orig_sem)
         new_rels = orig_sem.rels[:]
@@ -34,10 +36,10 @@ def swap_subj(orig_sem, index_ep):
         new_rels.remove(index_ep)
         new_rels.append(new_ep)
 
-    new_sem = copy_sem(orig_sem,
-                       rels=new_rels,
-                       variables=new_vars)
-    return {'swap subj/obj': new_sem}
+        new_sem = copy_sem(orig_sem,
+                           rels=new_rels,
+                           variables=new_vars)
+        return {'swap subj/obj': new_sem}
 
 
 def negation(orig_sem, index_ep):
@@ -531,6 +533,8 @@ def get_max_vid(sem):
 
 def copy_sem(orig_sem, top=None, index=None, rels=None, hcons=None, icons=None, variables=None):
     ''' return an MRS with specified changes to original MRS '''
+    if icons is None:
+        icons = list(orig_sem.icons) if orig_sem.icons is not None else []
     if not top:
         top = orig_sem.top
     if not index:
@@ -695,7 +699,8 @@ def transfer(orig_sent, grm, ace, timeout=5, rules=None, tenses=None, progs=None
     try:
         for r in rules.values():
             simp_trans_sems.update(r(orig_sem))
-    except:
+    except Exception:
+        traceback.print_exc()
         return {}
 
     for trans_type, s in simp_trans_sems.items():

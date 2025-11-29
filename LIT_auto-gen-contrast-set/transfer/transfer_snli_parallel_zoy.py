@@ -4,6 +4,7 @@ import sys
 import copy
 import argparse
 import subprocess
+import traceback
 from tqdm import tqdm
 from ergtransfer_zoy import transfer
 from delphin.ace import ACEParser, ACEGenerator
@@ -16,9 +17,10 @@ parser.add_argument("--modalities", nargs='+', default=['_may_v_modal'])
 parser.add_argument("--progs", nargs='+', default=['+', '-'])
 parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-1214-x86-64-0.9.34.dat")
 #parser.add_argument("--grm_path", type=str, default=f"{os.getcwd()}/../../ace-erg/erg-2025-x86-64-0.9.34.dat")
-parser.add_argument("--ace_path", type=str, default=f"{os.getcwd()}/../ace-0.9.34-zoy-build/ace")
+parser.add_argument("--ace_path", type=str, default=f"{os.getcwd()}/../ace-0.9.34-binary/ace")
 parser.add_argument("--checkpoint_period", type=int, default=10)
 parser.add_argument("--timeout", type=int, default=10)
+parser.add_argument("--max_sentences_reset_ace_process", type=int, default=10)
 
 
 def read_snli(file_path):
@@ -39,20 +41,8 @@ def read_snli(file_path):
     return data
 
 
-def parse_file(x):
-    args, filename, workerid = x
-
-    # 1. Setup Logging
-    log_file_path = f"{args.target_data_dir}/log_worker_{workerid:02d}.txt"
-    f_log = open(log_file_path, 'w')
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os.dup2(f_log.fileno(), 1) # stdout -> file
-    os.dup2(f_log.fileno(), 2) # stderr -> file
-    print(f"Zoy Debug: Worker {workerid} initializing persistent ACE processes...")
-
-    # 2. Initialize Persistent ACE Processes
-    # Open them ONCE per worker, not once per sentence
+def init_ace(args, workerid):
+    print(f"Zoy Debug: Worker {workerid} starting new ACE processes...")
     try:
         ace_parser = ACEParser(
             args.grm_path,
@@ -63,11 +53,45 @@ def parse_file(x):
         ace_generator = ACEGenerator(
             args.grm_path,
             executable=args.ace_path,
-            cmdargs=['--timeout', str(args.timeout), '--disable-generalization',
-            '-n', '64']  # STOP after finding 64 valid sentences to save time
+            cmdargs=['--timeout', str(args.timeout), '--disable-generalization']
         )
+        return ace_parser, ace_generator
     except Exception as e:
-        print(f"Error starting ACE: {e}")
+        print(f"Error starting ACE in worker {workerid}: {e}")
+        return None, None
+
+
+def close_ace(ace_parser, ace_generator, workerid):
+    print(f"Zoy Debug: Worker {workerid} closing ACE processes.")
+    try:
+        if ace_parser is not None:
+            ace_parser.close()
+    except Exception as e:
+        print(f"Zoy Debug: Worker {workerid} error closing ACEParser: {e}")
+    try:
+        if ace_generator is not None:
+            ace_generator.close()
+    except Exception as e:
+        print(f"Zoy Debug: Worker {workerid} error closing ACEGenerator: {e}")
+
+
+def parse_file(x):
+    args, filename, workerid = x
+
+    # 1. Setup Logging
+    log_file_path = f"{args.target_data_dir}/log_worker_{workerid:02d}.txt"
+    f_log = open(log_file_path, 'w')
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.dup2(f_log.fileno(), 1)  # stdout -> file
+    os.dup2(f_log.fileno(), 2)  # stderr -> file
+    print(f"Zoy Debug: Worker {workerid} initializing...")
+
+    # 2. Initialize Persistent ACE Processes (first batch)
+    ace_parser, ace_generator = init_ace(args, workerid)
+    if ace_parser is None or ace_generator is None:
+        print(f"Zoy Debug: Worker {workerid} failed to start ACE, aborting.")
+        f_log.close()
         return False
 
     data = read_snli(f"{args.data_dir}/{filename}")
@@ -77,13 +101,29 @@ def parse_file(x):
 
     print(f"Worker {workerid} processing {len(data)} items...")
 
+    # counter for how many examples processed with current ACE instances
+    since_restart = 0
+    restart_interval = max(1, args.max_sentences_reset_ace_process)
+
     try:
         for i, datum in enumerate(data):
+            # Restart ACE after every N examples to avoid long-lived process issues
+            if since_restart >= restart_interval:
+                print(f"Zoy Debug: Worker {workerid} restarting ACE after {since_restart} items.")
+                close_ace(ace_parser, ace_generator, workerid)
+                ace_parser, ace_generator = init_ace(args, workerid)
+                if ace_parser is None or ace_generator is None:
+                    print(f"Zoy Debug: Worker {workerid} failed to restart ACE, aborting loop.")
+                    break
+                since_restart = 0
+
             erg_datum = copy.deepcopy(datum)
+            processed_any_sentence = False  # track if at least one side succeeded
+
             for idx in ['1', '2']:
                 sentence = datum[f'sentence{idx}']
                 erg_sentence = {'original': sentence}
-                # Pass the persistent instances to the transfer function
+
                 transforms = transfer(
                     sentence, args.grm_path, args.ace_path,
                     timeout=args.timeout,
@@ -101,6 +141,9 @@ def parse_file(x):
                     statistics["timeout"] += 1
                     continue
 
+                # if we reached here, we have some transforms
+                processed_any_sentence = True
+
                 for trans_type in transforms:
                     # Handle original specially to keep MRS
                     if trans_type == 'original':
@@ -109,11 +152,16 @@ def parse_file(x):
                         erg_sentence[trans_type] = [t['surface'] for t in transforms[trans_type]]
 
                 erg_datum[f'sentence{idx}'] = erg_sentence
-            erg_data.append(erg_datum)
+
+            if processed_any_sentence:
+                erg_data.append(erg_datum)
+
+            since_restart += 1  # count this datum towards restart threshold
 
             # Checkpoint
             if (i + 1) % args.checkpoint_period == 0:
-                print(f"Worker {workerid}: Processed {i + 1}/{len(data)}")
+                print(f"Worker {workerid}: Processed {i + 1}/{len(data)}, "
+                      f"erg_data so far = {len(erg_data)}")
                 with open(target_file_name, 'w') as outfile:
                     for d in erg_data:
                         json.dump(d, outfile)
@@ -124,9 +172,7 @@ def parse_file(x):
         traceback.print_exc()
     finally:
         # 3. Clean up processes
-        print(f"Worker {workerid} closing ACE processes.")
-        ace_parser.close()
-        ace_generator.close()
+        close_ace(ace_parser, ace_generator, workerid)
         f_log.close()
 
     # Final Write
@@ -184,15 +230,14 @@ def check_and_split_dataset(data_dir, prefix, split, num_division):
 
 if __name__ == "__main__":
     import multiprocessing
-    import traceback
 
     args = parser.parse_args()
     if not os.path.exists(args.target_data_dir):
         os.mkdir(args.target_data_dir)
     data_file_prefix = "snli_1.0"
     #splits = ["train", "dev", "test"]
-    splits = ["test"]
-    num_division = 20
+    splits = ["dev"]
+    num_division = 32
     pool = multiprocessing.Pool(processes=num_division)
     for split in splits:
         print(f"Zoy Debug: processing split: {split}")
