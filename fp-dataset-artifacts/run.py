@@ -55,6 +55,7 @@ def main():
     # You need to format the dataset appropriately. For SNLI, you can prepare a file with each line containing one
     # example as follows:
     # {"premise": "Two women are embracing.", "hypothesis": "The sisters are hugging.", "label": 1}
+    all_datasets = []
     if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
         dataset_id = None
         # Load from local json/jsonl file
@@ -70,7 +71,17 @@ def main():
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
+        # if dataset_id == ("merged_anli_snli",):
+        #     ps1 = tuple("facebook/anli",)
+        #     ps2 = tuple("snli",)
+        #     ds1 = datasets.load_dataset(*ps1)
+        #     ds2 = datasets.load_dataset(*ps2)
+        #     dataset = datasets.concatenate_datasets(ds1, ds2)
+        #     # dataset = datasets.load_dataset(("facebook/anli")
+        # else:
+        #     dataset = datasets.load_dataset(*dataset_id)
         dataset = datasets.load_dataset(*dataset_id)
+
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
@@ -109,7 +120,28 @@ def main():
     train_dataset_featurized = None
     eval_dataset_featurized = None
     if training_args.do_train:
-        train_dataset = dataset['train']
+        if  any(item in ("anli","facebook/anli") for item in dataset_id):
+            # anli_r1_train = datasets.load_dataset("anli", split="train_r1")
+            # anli_r2_train = datasets.load_dataset("anli", split="train_r2")
+            # anli_r3_train = datasets.load_dataset("anli", split="train_r3")
+            anli_r1_train = dataset["train_r1"]
+            anli_r2_train = dataset["train_r2"]
+            anli_r3_train = dataset["train_r3"]
+            train_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
+            train_dataset = train_dataset.filter(lambda ex: ex['label'] != -1)
+        # train_split = 'train_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else 'train'
+        # elif dataset_id == "merged_anli_snli":
+        #     anli_r1_train = datasets.load_dataset("anli", split="train_r1")
+        #     anli_r2_train = datasets.load_dataset("anli", split="train_r2")
+        #     anli_r3_train = datasets.load_dataset("anli", split="train_r3")
+        #     snli_train = datasets.load_dataset("snli", split="train")
+        #     train_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train, snli_train])
+        #     train_dataset = train_dataset.filter(lambda ex: ex['label'] != -1)
+        else:
+        # print(f"{train_split=}")
+            print(f"{dataset=}")
+            train_dataset = dataset["train"]
+
         if args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         train_dataset_featurized = train_dataset.map(
@@ -119,7 +151,22 @@ def main():
             remove_columns=train_dataset.column_names
         )
     if training_args.do_eval:
-        eval_dataset = dataset[eval_split]
+        # print(f"{dataset_id=}")
+        # eval_split = 'test_r1' if "anli" in dataset_id else eval_split
+
+        # eval_split = 'test_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else eval_split
+        if  any(item in ("anli","facebook/anli") for item in dataset_id):
+            anli_r1_train = dataset["test_r1"]
+            anli_r2_train = dataset["test_r2"]
+            anli_r3_train = dataset["test_r3"]
+            eval_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
+            eval_dataset = eval_dataset.filter(lambda ex: ex['label'] != -1)
+        # train_split = 'train_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else 'train'
+        else:
+            eval_dataset = dataset[eval_split]
+
+
+        # eval_dataset = dataset[eval_split]
         if args.max_eval_samples:
             eval_dataset = eval_dataset.select(range(args.max_eval_samples))
         eval_dataset_featurized = eval_dataset.map(
