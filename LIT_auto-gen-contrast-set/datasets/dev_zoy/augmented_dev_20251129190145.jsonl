@@ -1,0 +1,23 @@
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "No person is training his horse for a competition.", "label": 1, "rule": "neg_hyp_n2n"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "His horse is being trained by a person for a competition.", "label": 1, "rule": "pass_rhs"}
+{"premise": "It is a person on a horse that jumps over a broken down airplane.", "hypothesis": "A person is training his horse for a competition.", "label": 1, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse who jumps over a broken down airplane.", "hypothesis": "A person is training his horse for a competition.", "label": 1, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse which jumps over a broken down airplane.", "hypothesis": "A person is training his horse for a competition.", "label": 1, "rule": "cleft1_lhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person who is training his horse for a competition.", "label": 1, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person which is training his horse for a competition.", "label": 1, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person that is training his horse for a competition.", "label": 1, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "Ordering an omelette no person is at a Diner.", "label": 0, "rule": "neg_hyp_c2e"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "No person is at a Diner ordering an omelette.", "label": 0, "rule": "neg_hyp_c2e"}
+{"premise": "It is a person on a horse that jumps over a broken down airplane.", "hypothesis": "A person is at a diner, ordering an omelette.", "label": 2, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse who jumps over a broken down airplane.", "hypothesis": "A person is at a diner, ordering an omelette.", "label": 2, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse which jumps over a broken down airplane.", "hypothesis": "A person is at a diner, ordering an omelette.", "label": 2, "rule": "cleft1_lhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person who is at a Diner ordering an omelette.", "label": 2, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person that is at a Diner ordering an omelette.", "label": 2, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "Ordering an omelette it is a person who is at a Diner.", "label": 2, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "No person is on a horse outdoors.", "label": 2, "rule": "neg_hyp_e2c"}
+{"premise": "It is a person on a horse that jumps over a broken down airplane.", "hypothesis": "A person is outdoors, on a horse.", "label": 0, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse who jumps over a broken down airplane.", "hypothesis": "A person is outdoors, on a horse.", "label": 0, "rule": "cleft1_lhs"}
+{"premise": "It is a person on a horse which jumps over a broken down airplane.", "hypothesis": "A person is outdoors, on a horse.", "label": 0, "rule": "cleft1_lhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person who is on a horse outdoors.", "label": 0, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person which is on a horse outdoors.", "label": 0, "rule": "cleft1_rhs"}
+{"premise": "A person on a horse jumps over a broken down airplane.", "hypothesis": "It is a person that is on a horse outdoors.", "label": 0, "rule": "cleft1_rhs"}

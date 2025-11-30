@@ -393,36 +393,35 @@ def write_to_file(final_data, output_dir, divide_data):
         pickle.dump(final_data[int(0.9 * len(final_data)):], open(os.path.join(output_dir, "test"), "wb"))
 
 def main():
-    parser = argparse.ArgumentParser()
-
+    parser = argparse.ArgumentParser("Process ACE ERG generated data to augmented datasets.")
+    # python3 post-process/process_zoy.py --data_path datasets/dev/ace_erg_transfer_train_only_3_lines.jsonl --output_dir datasets/dev_zoy --task snli --model_path ../../models/gpt-oss-20b/gpt-oss-20b-Q4_K_M.gguf
     # Required parameters
     parser.add_argument(
         "--data_path",
         default=None,
         type=str,
         required=True,
-        help="The path to the .pkl file containing original data and possible transformations.",
+        help="The path to the jsonl file containing original data and possible transformations.",
     )
     parser.add_argument(
         "--output_dir",
         default=None,
         type=str,
         required=True,
-        help="The output directory to put processed data files.",
+        help="The output directory to put processed jsonl data files.",
     )
-    
     # Other parameters
     parser.add_argument(
         "--model_type",
         default="gguf",
         type=str,
-        help="Type of the model used to select best sentence in a category, choose from gpt, gpt2, bert, roberta, xlnet, gguf.",
+        help="Type of the model used to select best sentence in a category, choose from gpt, gpt2, bert, roberta, xlnet, gguf. Default is gguf.",
     )
     parser.add_argument(
-        "--model_name",
+        "--model_path",
         default="gpt-oss-20b.gguf",
         type=str,
-        help="Name of the model used to select best sentence in a category.",
+        help="Model file path used to select best sentence in a category, e.g. ../../models/gpt-oss-20b/gpt-oss-20b-Q4_K_M.gguf",
     )
     parser.add_argument(
         "--divide_data",
@@ -452,7 +451,7 @@ def main():
         "--keep_top_k",
         default=3,
         type=int,
-        help="Number of best variations to keep",
+        help="Number of best variations to keep, default is 3.",
     )
 
     SPLITS = ["test", "dev", "train"]
@@ -468,18 +467,18 @@ def main():
     if args.model_type == "gguf":
         tokenizer = None # GGUF has internal tokenizer
         model = model_class(
-            model_path=args.model_name,
+            model_path=args.model_path,
             n_gpu_layers=-1, # all layers on GPU
             n_ctx=8192, # limit memory usage by reducing context to 8k instead of 128k
             logits_all=True, # calculating log-likelihood score of the tokens needs full logit extraction
             verbose=False
         )
     else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(os.path.basename(args.model_path))
         # Fix padding token issues for Llama/Mistral
         if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
         model = model_class.from_pretrained(
-            args.model_name,
+            args.model_path,
             torch_dtype=torch.float16,
             device_map="auto"
         )
