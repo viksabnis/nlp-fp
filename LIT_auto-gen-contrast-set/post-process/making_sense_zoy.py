@@ -15,6 +15,7 @@ import sys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+DEBUG = False
 
 def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -101,11 +102,11 @@ def score_gguf(text, llm, tokenizer=None):
             log_likelihood += token_log_prob
 
         score = log_likelihood / len(targets)
-        print(f"Zoy Debug: text={text}, tokens={tokens}, score={score:.3f}")
+        if DEBUG: print(f"Zoy Debug: text={text}, tokens={tokens}, score={score:.3f}")
         return score
 
     except Exception as e:
-        print(f"GGUF Scoring Error: {e}")
+        if DEBUG: print(f"GGUF Scoring Error: {e}")
         # Reset on error to be safe
         try: llm.reset()
         except: pass
@@ -136,7 +137,7 @@ def bert_predict(text, model, tokenizer):
     sentence_score = 0
     length = len(tokenized_text)-2
     if length == 0:
-        print(text, tokenized_text)
+        if DEBUG: print(text, tokenized_text)
     for masked_index in range(1,len(tokenized_text)-1):
         # Mask a token that we will try to predict back with `BertForMaskedLM`
         masked_word = tokenized_text[masked_index]

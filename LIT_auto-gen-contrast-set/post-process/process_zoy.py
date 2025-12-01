@@ -25,6 +25,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from transfer.ergtransfer import get_tense
 from making_sense_zoy import uni_predict, bert_predict, ro_predict, xlnet_predict
 from making_sense_zoy import score_causal_lm, score_masked_lm, score_gguf
+from making_sense_zoy import DEBUG
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 ORI = "original"
@@ -147,9 +148,10 @@ def sample(data, sample):
     random.shuffle(data)
     return data[:sample]
 
-def select_best(data, model, tokenizer, predictor, top_k=3):
+def select_best(data, model, tokenizer, predictor, top_k=0):
     """
     Selects candidates for each variation.
+    - If top_k <= 0: Disable LLM filtering, keeps ALL candidates.
     - If num_candidates <= top_k: Keeps ALL candidates (no scoring).
     - If num_candidates > top_k:  Scores them and keeps the top k.
     Preserves all other keys.
@@ -203,22 +205,23 @@ def select_best(data, model, tokenizer, predictor, top_k=3):
                 if not candidates: continue
 
                 # Conditional Filtering
-                print(f"Zoy Debug: form={form}")
-                if len(candidates) <= top_k:
-                    # If we have fewer than (or equal to) K candidates, keep them ALL. No LLM scoring needed.
+                if DEBUG: print(f"\nZoy Debug: form={form}")
+                if top_k is not None and top_k <= 0:
+                    # Disable LLM filtering entirely: keep ALL candidates, do NOT call predictor()
                     final_candidates = candidates
                 else:
-                    scores = [predictor(c, model, tokenizer) for c in candidates]
-                    # Get indices of top K scores (descending order)
-                    top_indices = np.argsort(scores)[-top_k:][::-1]
-                    final_candidates = [candidates[i] for i in top_indices]
-
+                    # Normal behavior: only score if we have more than top_k candidates
+                    if len(candidates) <= top_k:
+                        # If we have fewer than (or equal to) K candidates, keep them ALL. No LLM scoring needed.
+                        final_candidates = candidates
+                    else:
+                        scores = [predictor(c, model, tokenizer) for c in candidates]
+                        # Get indices of top K scores (descending order)
+                        top_indices = np.argsort(scores)[-top_k:][::-1]
+                        final_candidates = [candidates[i] for i in top_indices]
                 cleaned_entry[sent][form] = final_candidates
-
         cleaned_data.append(cleaned_entry)
-
-        print(f"Zoy Debug: processed {idx} out of {len(data)}", end="\r")
-
+        if DEBUG: print(f"Zoy Debug: processed {idx} out of {len(data)}", end="\r")
     return cleaned_data
 
 def get_new_label(old_label, rule_id):
@@ -346,7 +349,7 @@ def apply_rules(cleaned_data, rules):
 def read_jsonl(filepath: str):
     ret = []
     assert ".jsonl" in filepath
-    print(f"Zoy Debug: reading from: {filepath}")
+    if DEBUG: print(f"Zoy Debug: reading from: {filepath}")
     with open(filepath, "r") as f:
         for line in f:
             if line == "":
@@ -368,7 +371,7 @@ def write_jsonl(final_data, output_path):
             }
             f.write(json.dumps(out_json_line) + '\n')
             count += 1
-    print(f"Zoy Debug: wrote {count} records to {output_path}")
+    if DEBUG: print(f"Zoy Debug: wrote {count} records to {output_path}")
 
 def wirte_to_text(cleaned_data, output_dir):
     with open(os.path.join(output_dir, "samples.txt"), "w") as file:
@@ -449,41 +452,57 @@ def main():
     )
     parser.add_argument(
         "--keep_top_k",
-        default=3,
+        default=0,
         type=int,
-        help="Number of best variations to keep, default is 3.",
+        help="Number of best variations to keep, default is 0, which disables this feature.",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug print() output.",
+    )
+
 
     SPLITS = ["test", "dev", "train"]
 
     args = parser.parse_args()
+    DEBUG = args.debug
 
-    # Load Model to select best candidate
-    if args.model_type not in MODEL_CONFIGS:
-        raise ValueError(f"Model type {args.model_type} not found in MODEL_CONFIGS")
+    # Decide whether to load LLM model at all
+    use_llm_model = args.keep_top_k is not None and args.keep_top_k > 0
+    model = None
+    tokenizer = None
+    predictor = None
 
-    model_class, predictor = MODEL_CONFIGS[args.model_type]
+    if use_llm_model:
+        # Load Model to select best candidate
+        if args.model_type not in MODEL_CONFIGS:
+            raise ValueError(f"Model type {args.model_type} not found in MODEL_CONFIGS")
 
-    if args.model_type == "gguf":
-        tokenizer = None # GGUF has internal tokenizer
-        model = model_class(
-            model_path=args.model_path,
-            n_gpu_layers=-1, # all layers on GPU
-            n_ctx=8192, # limit memory usage by reducing context to 8k instead of 128k
-            logits_all=True, # calculating log-likelihood score of the tokens needs full logit extraction
-            verbose=False
-        )
+        model_class, predictor = MODEL_CONFIGS[args.model_type]
+
+        if args.model_type == "gguf":
+            tokenizer = None # GGUF has internal tokenizer
+            model = model_class(
+                model_path=args.model_path,
+                n_gpu_layers=-1, # all layers on GPU
+                n_ctx=8192, # limit memory usage by reducing context to 8k instead of 128k
+                logits_all=True, # calculating log-likelihood score of the tokens needs full logit extraction
+                verbose=False
+            )
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(os.path.basename(args.model_path))
+            # Fix padding token issues for Llama/Mistral
+            if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+            model = model_class.from_pretrained(
+                args.model_path,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
+            model.to("cuda")
+            model.eval()
     else:
-        tokenizer = AutoTokenizer.from_pretrained(os.path.basename(args.model_path))
-        # Fix padding token issues for Llama/Mistral
-        if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
-        model = model_class.from_pretrained(
-            args.model_path,
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
-        model.to("cuda")
-        model.eval()
+        if DEBUG: print("Zoy Debug: keep_top_k <= 0, therefore disabling LLM model loading and filtering.")
 
     if os.path.isdir(args.data_path):
         paths = [os.path.join(args.data_path, filename) for filename in os.listdir(args.data_path)][::-1]
@@ -502,16 +521,16 @@ def main():
 
         raw_data = read_jsonl(path)
         if args.sample > 0: raw_data = sample(raw_data, args.sample)
-        print(f"Zoy Debug: filtering {result_filename} ({len(raw_data)} items) with {args.model_type}\n")
-        print(f"Zoy Debug: ace-erg raw data: {raw_data}\n")
+        if DEBUG: print(f"Zoy Debug: filtering {result_filename} ({len(raw_data)} items) with {args.model_type}\n")
+        if DEBUG: print(f"Zoy Debug: ace-erg raw data: {raw_data}\n")
 
         # Filter best sentences with LLM top-k scoring
         cleaned_data = select_best(raw_data, model, tokenizer, predictor, top_k=args.keep_top_k)
-        print(f"\nZoy Debug: cleaned best data: {cleaned_data}\n")
+        if DEBUG: print(f"\nZoy Debug: cleaned best data: {cleaned_data}\n")
 
         # Apply logic rules to generate label
         final_data = apply_rules(cleaned_data, ALL_RULES[args.task])
-        print(f"Zoy Debug: applied rules final data: {final_data}\n")
+        if DEBUG: print(f"Zoy Debug: applied rules final data: {final_data}\n")
 
         # Save JSONL results
         output_path = os.path.join(args.output_dir, result_filename)
