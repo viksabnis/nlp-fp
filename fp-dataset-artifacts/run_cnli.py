@@ -83,23 +83,23 @@ def main():
     #     dataset = datasets.load_dataset(*dataset_id)
     if training_args.do_train:
         # cnli_features = datasets.Features({
-        #     'premise': datasets.Value('string'), 
-        #     'hypothesis': datasets.Value('string'), 
+        #     'premise': datasets.Value('string'),
+        #     'hypothesis': datasets.Value('string'),
         #     "label": datasets.ClassLabel(names=['entailment', 'neutral', 'contradiction'])
         # })
         # unli_features = datasets.Features({
         #     'id': datasets.Value('string'),
-        #     'premise': datasets.Value('string'), 
-        #     'hypothesis': datasets.Value('string'), 
+        #     'premise': datasets.Value('string'),
+        #     'hypothesis': datasets.Value('string'),
         #     "label": datasets.ClassLabel(names=['entailment', 'neutral', 'contradiction']),
         #     "unli": datasets.Value('string')
-        # }) 
+        # })
         negation_only_features = datasets.Features({
-            'id': datasets.Value('string'), 
+            'id': datasets.Value('string'),
             "label": datasets.ClassLabel(names=['entailment', 'neutral', 'contradiction', '-']),
-            'premise': datasets.Value('string'), 
-            'hypothesis': datasets.Value('string') 
-        })               
+            'premise': datasets.Value('string'),
+            'hypothesis': datasets.Value('string')
+        })
         # unli_data_set = datasets.load_dataset('json', features=unli_features, data_files="/Users/viksabnis/nlp/u-snli/train.jsonl")
         # unli_data_set = unli_data_set.filter(lambda example: example["label"] != -1)
         # negation_only_data_set = datasets.load_dataset('json', features=negation_only_features, data_files="/Users/viksabnis/nlp/aug_snli_50/aug_snli/negations_only.jsonl", split='train[:50%]')
@@ -124,7 +124,7 @@ def main():
         # anli_r1_train = datasets.load_dataset("facebook/anli", split="train_r1[:40%]")
         # anli_r2_train = datasets.load_dataset("facebook/anli", split="train_r2[:40%]")
         # anli_r3_train = datasets.load_dataset("facebook/anli", split="train_r3[:40%]")
-        # anli_all_train = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train]) 
+        # anli_all_train = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
         # anli_all_train = datasets.load_dataset("facebook/anli", split="train_r3")
         # anli_all_train = anli_all_train.filter(lambda example: example["label"] != -1)
         # snli_train = datasets.load_dataset("snli", split="train[:50%]")
@@ -147,8 +147,8 @@ def main():
         # dataset = swap_subj_obj_data_set['train']
         # dataset = passive_data_set['train']
         dataset = datasets.concatenate_datasets([#negation_only_data_set,
-                                                  itscleft_data_set, 
-                                                  swap_subj_obj_data_set, 
+                                                  itscleft_data_set,
+                                                  swap_subj_obj_data_set,
                                                   passive_data_set ])
 
     # dataset.shu
@@ -156,7 +156,7 @@ def main():
         dataset = datasets.load_dataset("snli", split='validation')
         dataset = dataset.filter(lambda example: example["label"] != -1)
 
-    
+
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
 
@@ -188,7 +188,7 @@ def main():
     # if dataset_id == ('snli',):
         # remove SNLI examples with no label
         # dataset = dataset.filter(lambda ex: ex['label'] != -1)
-    
+
     train_dataset = None
     eval_dataset = None
     train_dataset_featurized = None
@@ -235,12 +235,12 @@ def main():
         #     anli_r2_train = dataset["test_r2"]
         #     anli_r3_train = dataset["test_r3"]
         #     eval_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
-        #     eval_dataset = eval_dataset.filter(lambda ex: ex['label'] != -1)            
+        #     eval_dataset = eval_dataset.filter(lambda ex: ex['label'] != -1)
         # # train_split = 'train_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else 'train'
         # else:
         #     eval_dataset = dataset[eval_split]
         eval_dataset = dataset
-       
+
         # eval_dataset = dataset[eval_split]
         if args.max_eval_samples:
             eval_dataset = eval_dataset.select(range(args.max_eval_samples))
@@ -267,7 +267,7 @@ def main():
             predictions=eval_preds.predictions, references=eval_preds.label_ids)
     elif args.task == 'nli':
         compute_metrics = compute_accuracy
-    
+
 
     # This function wraps the compute_metrics function, storing the model's predictions
     # so that they can be dumped along with the computed metrics
@@ -345,7 +345,7 @@ def main():
                     if pred != example['label']:
                         if label == 0 and pred == 1:
                             example_with_prediction['status'] = 'False Neutral - Entailment'
-                        elif label == 0 and pred == 2: 
+                        elif label == 0 and pred == 2:
                             example_with_prediction['status'] = 'False Contradict'
                         elif label == 1 and pred == 0:
                             example_with_prediction['status'] = ' False Entailment - Neutral'

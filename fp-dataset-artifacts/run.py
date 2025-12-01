@@ -64,6 +64,13 @@ def main():
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
         eval_split = 'train'
+        # Map string labels to integers for NLI
+        if args.task == 'nli':
+            label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+            def encode_label(example):
+                example['label'] = label2id[example['label']]
+                return example
+            dataset = dataset.map(encode_label)
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
@@ -82,7 +89,6 @@ def main():
         #     dataset = datasets.load_dataset(*dataset_id)
         dataset = datasets.load_dataset(*dataset_id)
 
-    
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
 
@@ -114,7 +120,7 @@ def main():
     if dataset_id == ('snli',):
         # remove SNLI examples with no label
         dataset = dataset.filter(lambda ex: ex['label'] != -1)
-    
+
     train_dataset = None
     eval_dataset = None
     train_dataset_featurized = None
@@ -192,7 +198,7 @@ def main():
             predictions=eval_preds.predictions, references=eval_preds.label_ids)
     elif args.task == 'nli':
         compute_metrics = compute_accuracy
-    
+
 
     # This function wraps the compute_metrics function, storing the model's predictions
     # so that they can be dumped along with the computed metrics
@@ -270,7 +276,7 @@ def main():
                     if pred != example['label']:
                         if label == 0 and pred == 1:
                             example_with_prediction['status'] = 'False Neutral - Entailment'
-                        elif label == 0 and pred == 2: 
+                        elif label == 0 and pred == 2:
                             example_with_prediction['status'] = 'False Contradict'
                         elif label == 1 and pred == 0:
                             example_with_prediction['status'] = ' False Entailment - Neutral'
