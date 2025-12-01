@@ -1,3 +1,4 @@
+import re
 import pickle
 import json
 import os
@@ -259,6 +260,7 @@ def apply_rules(cleaned_data, rules):
         label = entry.get("gold_label")
         sent1 = entry.get("sentence1")
         sent2 = entry.get("sentence2")
+        pairID = entry.get("pairID")
 
         if not isinstance(sent1, dict) or not isinstance(sent2, dict): continue
 
@@ -337,10 +339,11 @@ def apply_rules(cleaned_data, rules):
 
                     new_item = base_metadata.copy()
                     new_item.update({
+                        "id": f"{pairID}",
                         "gold_label": calculated_label,
                         "sentence1": s1_text,
                         "sentence2": s2_text,
-                        "rule": ridx
+                        "rule": ridx,
                     })
                     final_data.append(new_item)
 
@@ -357,23 +360,33 @@ def read_jsonl(filepath: str):
             ret.append(json.loads(line))
     return ret
 
-def write_jsonl(final_data, output_path):
+def write_jsonl(final_data, output_path, use_text_label=True):
     count = 0
     LABEL_MAP = {"entailment": 0, "neutral": 1, "contradiction": 2}
     with open(output_path, 'w') as f:
         for item in final_data:
             if item["gold_label"] not in LABEL_MAP: continue
-            out_json_line = {
-                "premise": item["sentence1"],
-                "hypothesis": item["sentence2"],
-                "label": LABEL_MAP[item["gold_label"]],
-                "rule": item["rule"]
-            }
+            if use_text_label:
+                out_json_line = {
+                    "id": item["id"],
+                    "label": item["gold_label"],
+                    "premise": item["sentence1"],
+                    "hypothesis": item["sentence2"],
+                    "rule": item["rule"]
+                }
+            else:
+                out_json_line = {
+                    "id": item["id"],
+                    "label": LABEL_MAP[item["gold_label"]],
+                    "premise": item["sentence1"],
+                    "hypothesis": item["sentence2"],
+                    "rule": item["rule"]
+                }
             f.write(json.dumps(out_json_line) + '\n')
             count += 1
     if DEBUG: print(f"Zoy Debug: wrote {count} records to {output_path}")
 
-def wirte_to_text(cleaned_data, output_dir):
+def write_to_text(cleaned_data, output_dir):
     with open(os.path.join(output_dir, "samples.txt"), "w") as file:
         for i, d in enumerate(cleaned_data):
             file.write("data: " + str(i) + "\n")
@@ -404,7 +417,7 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="The path to the jsonl file containing original data and possible transformations.",
+        help="The dir or file path to the jsonl file containing original data and possible transformations.",
     )
     parser.add_argument(
         "--output_dir",
@@ -462,9 +475,6 @@ def main():
         help="Enable debug print() output.",
     )
 
-
-    SPLITS = ["test", "dev", "train"]
-
     args = parser.parse_args()
     DEBUG = args.debug
 
@@ -505,18 +515,20 @@ def main():
         if DEBUG: print("Zoy Debug: keep_top_k <= 0, therefore disabling LLM model loading and filtering.")
 
     if os.path.isdir(args.data_path):
-        paths = [os.path.join(args.data_path, filename) for filename in os.listdir(args.data_path)][::-1]
+        paths = [os.path.join(args.data_path, filename) for filename in os.listdir(args.data_path)]
     else:
         paths = [args.data_path]
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     for path in paths:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        result_filename = f"augmented_{args.task}_{timestamp}.jsonl"
-        for s in SPLITS:
-            if s in path:
-                result_filename = f"augmented_{s}_{timestamp}.jsonl"
+        print(f"Zoy post-processing {path}...", end='', flush=True)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        result_filename = f"augmented_{args.task}_dataset_{timestamp}.jsonl"
+        for r in [r"(train[-_]*\d*)", r"(dev[-_]*\d*)", r"(test[-_]*\d*)"]:
+            m = re.search(r, path)
+            if m:
+                result_filename = f"augmented_{args.task}_{m.group(0)}_{timestamp}.jsonl"
                 break
 
         raw_data = read_jsonl(path)
@@ -535,7 +547,7 @@ def main():
         # Save JSONL results
         output_path = os.path.join(args.output_dir, result_filename)
         write_jsonl(final_data, output_path)
-        print(f"All done!")
+        print(f", wrote to {output_path}")
 
 if __name__ == "__main__":
     main()
