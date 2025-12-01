@@ -126,7 +126,7 @@ def main():
     train_dataset_featurized = None
     eval_dataset_featurized = None
     if training_args.do_train:
-        if  any(item in ("anli","facebook/anli") for item in dataset_id):
+        if dataset_id is not None and any(item in ("anli","facebook/anli") for item in dataset_id):
             # anli_r1_train = datasets.load_dataset("anli", split="train_r1")
             # anli_r2_train = datasets.load_dataset("anli", split="train_r2")
             # anli_r3_train = datasets.load_dataset("anli", split="train_r3")
@@ -161,7 +161,7 @@ def main():
         # eval_split = 'test_r1' if "anli" in dataset_id else eval_split
 
         # eval_split = 'test_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else eval_split
-        if  any(item in ("anli","facebook/anli") for item in dataset_id):
+        if dataset_id is not None and any(item in ("anli","facebook/anli") for item in dataset_id):
             anli_r1_train = dataset["test_r1"]
             anli_r2_train = dataset["test_r2"]
             anli_r3_train = dataset["test_r3"]
