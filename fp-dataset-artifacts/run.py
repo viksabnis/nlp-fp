@@ -7,8 +7,17 @@ from helpers import prepare_dataset_nli, prepare_train_dataset_qa, \
 import os
 import json
 
-NUM_PREPROCESSING_WORKERS = 2
+NUM_PREPROCESSING_WORKERS = 4
 
+def encode_label(example):
+    if example['label'] is None:
+        example['label'] = -1
+    elif isinstance(example['label'], str):
+        label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+        example['label'] = label2id[example['label']]
+    elif isinstance(example['label'], int):
+        return example
+    return example
 
 def main():
     argp = HfArgumentParser(TrainingArguments)
@@ -47,6 +56,16 @@ def main():
                       help='Limit the number of examples to train on.')
     argp.add_argument('--max_eval_samples', type=int, default=None,
                       help='Limit the number of examples to evaluate on.')
+    argp.add_argument('--use_custom_dataset', action='store_true',
+                      help="""This argument overrides the default dataset used for the specified task.""")
+    argp.add_argument('--train_dataset_path', type=str, default=None,
+                      help="""Custom train dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--dev_dataset_path', type=str, default=None,
+                      help="""Custom validation or dev dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--test_dataset_path', type=str, default=None,
+                      help="""Custom evaluation or test dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--force_nli_label_mapping', action='store_true',
+                      help="""If SNLI dataset label uses string not integer, we have to force mapping.""")
 
     training_args, args = argp.parse_args_into_dataclasses()
 
@@ -56,25 +75,45 @@ def main():
     # example as follows:
     # {"premise": "Two women are embracing.", "hypothesis": "The sisters are hugging.", "label": 1}
     all_datasets = []
-    if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
-        dataset_id = None
+    if args.use_custom_dataset:
         # Load from local json/jsonl file
-        dataset = datasets.load_dataset('json', data_files=args.dataset)
-        # By default, the "json" dataset loader places all examples in the train split,
-        # so if we want to use a jsonl file for evaluation we need to get the "train" split
-        # from the loaded dataset
-        eval_split = 'train'
-        # Map string labels to integers for NLI
+        data_files = {}
+        if args.train_dataset_path is not None:
+            data_files['train'] = args.train_dataset_path
+        if args.dev_dataset_path is not None:
+            data_files['dev'] = args.dev_dataset_path
+        if args.test_dataset_path is not None:
+            data_files['test'] = args.test_dataset_path
+        if not data_files:
+            raise ValueError("use_custom_dataset is set, but train/dev/test dataset paths were not provided.")
+
+        # Load raw dataset all at once, need multple GB of memory
+        dataset = datasets.load_dataset('json', data_files=data_files)
+
+        # Indicate that we're using a custom dataset not huggingface dataset
+        dataset_id = None
+
+        # Default eval split: prefer dev, then test, otherwise fall back to train
+        if 'dev' in dataset:
+            eval_split = 'dev'
+        elif 'test' in dataset:
+            eval_split = 'test'
+        else:
+            eval_split = 'train'
+
+        # SNLI dataset uses string labels and needs mapping, only map what we need
         if args.task == 'nli':
-            label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
-            def encode_label(example):
-                example['label'] = label2id[example['label']]
-                return example
-            dataset = dataset.map(encode_label)
+            if training_args.do_train:
+                if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label)
+            if training_args.do_eval:
+                if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label)
+                if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label)
+
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
             default_datasets[args.task]
+
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
@@ -144,8 +183,8 @@ def main():
         #     train_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train, snli_train])
         #     train_dataset = train_dataset.filter(lambda ex: ex['label'] != -1)
         else:
-        # print(f"{train_split=}")
-            print(f"{dataset=}")
+            # print(f"{train_split=}")
+            # print(f"{dataset=}")
             train_dataset = dataset["train"]
 
         if args.max_train_samples:
@@ -156,6 +195,7 @@ def main():
             num_proc=NUM_PREPROCESSING_WORKERS,
             remove_columns=train_dataset.column_names
         )
+
     if training_args.do_eval:
         # print(f"{dataset_id=}")
         # eval_split = 'test_r1' if "anli" in dataset_id else eval_split
@@ -171,8 +211,6 @@ def main():
         else:
             eval_dataset = dataset[eval_split]
 
-
-        # eval_dataset = dataset[eval_split]
         if args.max_eval_samples:
             eval_dataset = eval_dataset.select(range(args.max_eval_samples))
         eval_dataset_featurized = eval_dataset.map(
@@ -198,7 +236,6 @@ def main():
             predictions=eval_preds.predictions, references=eval_preds.label_ids)
     elif args.task == 'nli':
         compute_metrics = compute_accuracy
-
 
     # This function wraps the compute_metrics function, storing the model's predictions
     # so that they can be dumped along with the computed metrics
