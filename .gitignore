@@ -6,3 +6,4 @@
 **/*.tar.gz
 **/*.bz2
 snli_1.0/
+**/__pycache__

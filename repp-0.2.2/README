@@ -1,0 +1,25 @@
+Standalone and Shared-Library REPP Implementation
+(C) 2009 Woodley Packard
+
+LICENSE
+This software is free for all to use, under the terms of the LGPL (see: http://www.gnu.org/copyleft/lesser.html).
+
+INSTALLATION
+Simply run "./configure && make && make install".  Note that "make install" may require suitable privileges.
+
+STANDALONE USAGE
+The "repp" executable loads ".rpp" files and processes utterances on standard input, one per line.  Usage is:
+
+repp path-to-main-module.rpp -m path-to-submodule1.rpp -m path-to-submodule2.rpp [-y]
+
+By default, "repp" will preprocess each input utterance and show the output tokens delimitted by spaces.
+
+If you pass "-y", the output will be in "YY" format, suitable for input to PET.
+
+SHARED-LIBRARY
+Other applications can link against librepp.so and include <librepp.h>.
+
+The best documentation of the API is the function prototypes in the header file librepp.h -- it is not particularly complicated.
+
+BUGS
+The software probably has some bugs, since it is an early release.  Please to contact me <sweaglesw@sweaglesw.org> if you find them.

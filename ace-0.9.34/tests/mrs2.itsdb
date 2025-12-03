@@ -1,0 +1,10 @@
+[ LTOP: h1 INDEX: e2 [ e E.MOOD: INDICATIVE E.TENSE: PRESENT E.ASPECT.PERF: - E.ASPECT.PROGR: - ]
+	RELS: < [ prpstn_m_rel LBL: h1 MARG: h3 PSV: u4 TPC: u5 ]
+			[ _some_q_rel LBL: h6 ARG0: x8 [ x PNG.PN: 3PL DIVISIBLE: + ] RSTR: h7 BODY: h9 ]
+			[ part_of_rel LBL: h10 ARG0: x8 ARG1: x11 [ x PNG.PN: 3PL DIVISIBLE: + ] ]
+			[ _of_p_sel_rel LBL: h10 ARG0: e13 [ e E.TENSE: NONTENSE E.ASPECT.PERF: - E.ASPECT.PROGR: - ] ARG1: u12 ARG2: x11 ]
+			[ _the_q_rel LBL: h14 ARG0: x11 RSTR: h16 BODY: h15 ]
+			[ "_cat_n_rel" LBL: h17 ARG0: x11 ]
+			[ "_bark_v_rel" LBL: h18 ARG0: e2 ARG1: x8 ]
+		  >
+	HCONS: < h3 qeq h18 h7 qeq h10 h16 qeq h17 > ]

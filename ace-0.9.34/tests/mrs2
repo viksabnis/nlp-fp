@@ -1,0 +1,9 @@
+	_the_q_rel 2
+	_the_q_rel 3
+	_dog_n_1_rel 2
+	_cat_n_1_rel 3
+	_chase_v_1_rel 1 2 3
+	_near_p_rel 4 1 5
+	_some_q_rel 5
+	_tree_n_of_rel 5
+

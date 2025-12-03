@@ -1,14 +1,13 @@
 import pickle
 import json
 import os
+import sys
 import argparse
 import numpy as np
 from collections import defaultdict
-from transfer.ergtransfer import get_tense
 import torch
 import random
 from copy import deepcopy
-from dl_pipeline.making_sense import uni_predict, bert_predict, ro_predict, xlnet_predict
 from transformers import (
     OpenAIGPTLMHeadModel, OpenAIGPTTokenizer,
     GPT2LMHeadModel, GPT2Tokenizer,
@@ -17,6 +16,9 @@ from transformers import (
     XLNetLMHeadModel, XLNetTokenizer,
 )
 from delphin.codecs import simplemrs, mrsjson
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from transfer.ergtransfer import get_tense
+from making_sense import uni_predict, bert_predict, ro_predict, xlnet_predict
 
 ORI = "original"
 
@@ -127,7 +129,136 @@ def wirte_readable_text(cleaned_data, output_dir):
                         file.write(k + ": \n" + v + "\n\n")
 
 
+def _get_surface(value):
+    """
+    Normalize various possible formats to a single surface string:
+    - dict with 'surface' key  (original LIT format)
+    - list of strings          (your current JSONL)
+    - plain string.
+    """
+    if isinstance(value, dict):
+        surf = value.get("surface")
+        if isinstance(surf, str):
+            return surf
+        # Fall back: stringify if it's some unexpected shape
+        return str(value)
+    if isinstance(value, list):
+        # Choose first candidate deterministically
+        return value[0] if value else ""
+    # Assume it's already a string
+    return value
+
+
 def apply_rules(cleaned_data, rules):
+    final_data = []
+    for idx, entry in enumerate(cleaned_data):
+        final_entry = {}
+        label = entry["gold_label"]
+        sent1 = entry["sentence1"]
+        sent2 = entry["sentence2"]
+
+        # Basic sanity
+        assert isinstance(sent1, dict) and isinstance(sent2, dict)
+        assert ORI in sent1 and ORI in sent2
+
+        # Original sentences (allow dict / list / str)
+        s1_ori_val = sent1[ORI]
+        s2_ori_val = sent2[ORI]
+        s1_ori = _get_surface(s1_ori_val)
+        s2_ori = _get_surface(s2_ori_val)
+
+        final_entry["0"] = "\t".join([label, s1_ori, s2_ori])
+        if "genre" in entry:
+            final_entry["genre"] = entry["genre"]
+
+        # If only original form exists for either sentence, we can't apply rules
+        if len(sent1) == 1 or len(sent2) == 1:
+            final_data.append(final_entry)
+            continue
+
+        # MRS / tense info is optional now
+        mrs1 = mrs2 = None
+        has_mrs = (
+            isinstance(s1_ori_val, dict) and "mrs" in s1_ori_val
+            and isinstance(s2_ori_val, dict) and "mrs" in s2_ori_val
+        )
+        if has_mrs:
+            # Only do this if the full ERG-parsed structure is actually present
+            assert isinstance(s1_ori_val["mrs"], dict) and isinstance(s2_ori_val["mrs"], dict)
+            mrs1 = mrsjson.from_dict(s1_ori_val["mrs"])
+            mrs2 = mrsjson.from_dict(s2_ori_val["mrs"])
+
+        for rule, ridx in rules.items():
+            # '1a'/'1b' are tense rules that rely on MRS parses.
+            if ridx in ["1a", "1b"]:
+                if not has_mrs:
+                    # No tense info available -> skip tense rules
+                    continue
+                # If the current rule is tense, and the sentence pair are not both
+                # in present tense, move on
+                if get_tense(mrs1) != "present" or get_tense(mrs2) != "present":
+                    continue
+
+            match1, match2 = None, None
+            orig_label, trans1, trans2 = rule.split(";")
+
+            # Find a matching transformation for sentence1
+            for k1 in sent1.keys():
+                phenomena = trans1.split("+")
+                assert len(phenomena) <= 2
+                if len(phenomena) == 2:
+                    # one label-preserving + one label-changing phenomenon
+                    assert any(
+                        any(t in phenomenon for t in preserving_rule_types)
+                        for phenomenon in phenomena
+                    )
+                if all(p in k1 for p in phenomena):
+                    match1 = k1
+                    break
+
+            # Find a matching transformation for sentence2
+            for k2 in sent2.keys():
+                phenomena = trans2.split("+")
+                assert len(phenomena) <= 2
+                if len(phenomena) == 2:
+                    assert any(
+                        any(t in phenomenon for t in preserving_rule_types)
+                        for phenomenon in phenomena
+                    )
+                if all(b in k2 for b in phenomena):
+                    match2 = k2
+                    break
+
+            # If we didn't find a matched transformation pair
+            if not (match1 and match2):
+                continue
+
+            # Decide new label according to the rule definition
+            if orig_label == "*":
+                new_label = label
+            elif orig_label == label:
+                new_label = "neutral"
+            else:
+                continue
+
+            # Get surfaces for the chosen transformations
+            if match1 == ORI:
+                s1 = _get_surface(sent1[ORI])
+            else:
+                s1 = _get_surface(sent1[match1])
+
+            if match2 == ORI:
+                s2 = _get_surface(sent2[ORI])
+            else:
+                s2 = _get_surface(sent2[match2])
+
+            final_entry[ridx] = "\t".join([new_label, s1, s2])
+
+        final_data.append(final_entry)
+    return final_data
+
+
+def apply_rules_old(cleaned_data, rules):
     final_data = []
     for idx, entry in enumerate(cleaned_data):
         final_entry = {}
@@ -229,6 +360,17 @@ def read_jsonl(filepath: str):
     return ret
 
 
+def write_jsonl(path, data):
+    """
+    Write a list of Python objects as JSONL (one JSON object per line).
+    """
+    import json, os
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for obj in data:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
 def write_to_file(final_data, output_dir, divide_data):
     random.shuffle(final_data)
     if divide_data == "train":
@@ -327,7 +469,7 @@ def main():
     basic_rules = ["1a", "1b", "2a", "2b", "3a", "3b", "4", "5"]
     comp_rules = ["7a", "7b", "8a", "8b", "9a", "9b"]
     import json
-    rules = {v: k for k, v in json.load(open("/home/lzy/proj/AnalyzingNeuralLMs/datasets/final_snli/rules.json")).items()}
+    rules = {v: k for k, v in json.load(open("datasets/rules.json")).items()}
     sent1_trans = [r.split(";")[1] for r in rules.values()]
     sent2_trans = [r.split(";")[2] for r in rules.values()]
     for path in paths:
@@ -356,7 +498,8 @@ def main():
         print(f"sentence2: {sent2_stats}")
         print()
         final_data = apply_rules(cleaned_data, ALL_RULES[args.task])
-        pickle.dump(final_data, open(os.path.join(args.output_dir, result_filename), "wb"))
+        write_jsonl(os.path.join(args.output_dir, result_filename + ".jsonl"), final_data)
+        #pickle.dump(final_data, open(os.path.join(args.output_dir, result_filename), "wb"))
 
         # now we created dataset, we then split the dataset into basic and compositional
         basic_data = []
@@ -383,11 +526,13 @@ def main():
                     comp_d[r] = d[r]
             comp_data.append(comp_d)
         assert len(basic_data) == len(comp_data) == len(final_data)
-        pickle.dump(basic_data, open(os.path.join(f"{args.output_dir}/basic/", result_filename), "wb"))
-        pickle.dump(comp_data, open(os.path.join(f"{args.output_dir}/compositional/", result_filename), "wb"))
+        write_jsonl(os.path.join(args.output_dir, "basic", result_filename + ".jsonl"), basic_data)
+        write_jsonl(os.path.join(args.output_dir, "compositional", result_filename + ".jsonl"), comp_data)
+        #pickle.dump(basic_data, open(os.path.join(f"{args.output_dir}/basic/", result_filename), "wb"))
+        #pickle.dump(comp_data, open(os.path.join(f"{args.output_dir}/compositional/", result_filename), "wb"))
 
     # write_to_file(final_data, args.output_dir, args.divide_data)
-    import json
+    #import json
     # json.dump(ALL_RULES[args.task], open(f"{args.output_dir}/rules.json", "w"))
 
 

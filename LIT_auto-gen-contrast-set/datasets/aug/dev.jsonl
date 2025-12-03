@@ -1,0 +1,3 @@
+{"0": "neutral\tA person on a horse jumps over a broken down airplane.\tA person is training his horse for a competition.", "5": "neutral\tIt is a person on a horse who jumps over a down airplane broken.\tIt is a person who is training his horse for a competition."}
+{"0": "contradiction\tA person on a horse jumps over a broken down airplane.\tA person is at a diner, ordering an omelette.", "5": "contradiction\tIt is a person on a horse who jumps over a down airplane broken.\tOrdering an omelette it is a person who is at a Diner."}
+{"0": "entailment\tA person on a horse jumps over a broken down airplane.\tA person is outdoors, on a horse.", "5": "entailment\tIt is a person on a horse who jumps over a down airplane broken.\tIt is a person who is on a horse outdoors."}

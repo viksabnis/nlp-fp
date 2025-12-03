@@ -1,0 +1,27 @@
+# Zoy modified for python venv pip3, 2025.11.19.
+# sudo apt install ca-certificates libedit2 libffi8 ncurses-bin readline-common sqlite3 tk8.6 xz-utils zlib1g libreadline-dev build-essential libboost-regex-dev zlib1g-dev automake1.11
+chardet
+click
+filelock
+idna
+joblib
+numpy
+packaging
+penman
+progress
+# this is the required package to run our transfer module
+pydelphin
+pyparsing
+regex
+requests
+sacremoses
+sentencepiece
+tokenizers
+tqdm
+# this is the required package to run pretrained model
+transformers
+urllib3
+# this is added for common nlp (Zoy)
+torch
+spacy
+pydelphin

@@ -1,0 +1,1 @@
+[ LTOP: h1 INDEX: e2 [ e E.MOOD: INDICATIVE E.TENSE: PAST E.ASPECT.PERF: - E.ASPECT.PROGR: - ] RELS: < [ prpstn_m_rel LBL: h1 ARG0: e2 MARG: h3 PSV: u4 TPC: u5 ] [ "_rain_v_1_rel" LBL: h6 ARG0: e2 ] > HCONS: < h3 qeq h6 > TRIGGER: < it it2 > ]

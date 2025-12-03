@@ -1,0 +1,9 @@
+	_the_q_rel 2
+	_dog_n_1_rel 2
+	_chase_v_1_rel 1 2 3
+	_the_q_rel 3
+	_cat_n_1_rel 3
+	_down_p_rel 4 3 5
+	_the_q_rel 5
+	_hole_n_1_rel 5
+

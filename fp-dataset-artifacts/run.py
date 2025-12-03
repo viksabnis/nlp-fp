@@ -6,9 +6,20 @@ from helpers import prepare_dataset_nli, prepare_train_dataset_qa, \
     prepare_validation_dataset_qa, QuestionAnsweringTrainer, compute_accuracy
 import os
 import json
+import glob
+import numpy as np
 
-NUM_PREPROCESSING_WORKERS = 2
+NUM_PREPROCESSING_WORKERS = 4
 
+def encode_label(example):
+    if example['label'] is None:
+        example['label'] = -1
+    elif isinstance(example['label'], str):
+        label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+        example['label'] = label2id[example['label']]
+    elif isinstance(example['label'], int):
+        return example
+    return example
 
 def main():
     argp = HfArgumentParser(TrainingArguments)
@@ -29,6 +40,7 @@ def main():
     #     Where to put the trained model checkpoint(s) and any eval predictions.
     #     *This argument is required*.
 
+    # dataset artifacts options
     argp.add_argument('--model', type=str,
                       default='google/electra-small-discriminator',
                       help="""This argument specifies the base model to fine-tune.
@@ -47,31 +59,102 @@ def main():
                       help='Limit the number of examples to train on.')
     argp.add_argument('--max_eval_samples', type=int, default=None,
                       help='Limit the number of examples to evaluate on.')
+    # custom dataset options
+    argp.add_argument('--use_custom_dataset', action='store_true',
+                      help="""This argument overrides the default dataset used for the specified task.""")
+    argp.add_argument('--train_dataset_path', type=str, default=None,
+                      help="""Custom train dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--dev_dataset_path', type=str, default=None,
+                      help="""Custom validation or dev dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--test_dataset_path', type=str, default=None,
+                      help="""Custom evaluation or test dataset. Can be a path or a quoted glob pattern.""")
+    argp.add_argument('--force_nli_label_mapping', action='store_true',
+                      help="""If SNLI dataset label uses string not integer, we have to force mapping.""")
+    # dataset cartography options
+    argp.add_argument('--compute_training_dynamics', action='store_true',
+                      help="""Load all checkpoints in output_dir and compute training-dynamics-based
+        cartography metrics on the train split. Requires that checkpoints already exist in output_dir.""")
+    argp.add_argument('--cartography_metrics_output_path', type=str, default=None,
+                      help="""Optional path to write cartography metrics JSONL.
+                      Default: <output_dir>/cartography_metrics_snli.jsonl""")
+    argp.add_argument('--cartography_filter_output', type=str, default=None,
+                      help="""Optional output path for a filtered train JSONL produced using
+                      cartography metrics. Only supported when using --use_custom_dataset and
+                      --train_dataset_path.""")
+    argp.add_argument('--drop_easy_ratio', type=float, default=0.4,
+                      help="""Fraction of easiest (highest-confidence, high-correctness) examples
+                      to drop when filtering (cartography).""")
+    argp.add_argument('--drop_hard_ratio', type=float, default=0.1,
+                      help="""Fraction of hardest (lowest-confidence, low-correctness) examples
+                      to drop as likely noise (cartography).""")
+    argp.add_argument('--top_ambiguous_ratio', type=float, default=0.7,
+                      help="""Among remaining examples after dropping easy/hard, keep this
+                      fraction with highest variability (ambiguous region).""")
 
     training_args, args = argp.parse_args_into_dataclasses()
 
+    # --------------------------------------------------------------------------
+    # Dataset Artifacts: load augmented dataset and do training and evaluation
+    # --------------------------------------------------------------------------
     # Dataset selection
     # IMPORTANT: this code path allows you to load custom datasets different from the standard SQuAD or SNLI ones.
     # You need to format the dataset appropriately. For SNLI, you can prepare a file with each line containing one
     # example as follows:
     # {"premise": "Two women are embracing.", "hypothesis": "The sisters are hugging.", "label": 1}
-    if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
-        dataset_id = None
+    all_datasets = []
+    if args.use_custom_dataset:
         # Load from local json/jsonl file
-        dataset = datasets.load_dataset('json', data_files=args.dataset)
-        # By default, the "json" dataset loader places all examples in the train split,
-        # so if we want to use a jsonl file for evaluation we need to get the "train" split
-        # from the loaded dataset
-        eval_split = 'train'
+        data_files = {}
+        if args.train_dataset_path is not None:
+            data_files['train'] = args.train_dataset_path
+        if args.dev_dataset_path is not None:
+            data_files['dev'] = args.dev_dataset_path
+        if args.test_dataset_path is not None:
+            data_files['test'] = args.test_dataset_path
+        if not data_files:
+            raise ValueError("use_custom_dataset is set, but train/dev/test dataset paths were not provided.")
+
+        # Load raw dataset all at once, need multple GB of memory
+        dataset = datasets.load_dataset('json', data_files=data_files)
+
+        # Indicate that we're using a custom dataset not huggingface dataset
+        dataset_id = None
+
+        # Default eval split: prefer dev, then test, otherwise fall back to train
+        if 'dev' in dataset:
+            eval_split = 'dev'
+        elif 'test' in dataset:
+            eval_split = 'test'
+        else:
+            eval_split = 'train'
+
+        # SNLI dataset uses string labels and needs mapping, only map what we need
+        if args.task == 'nli':
+            if training_args.do_train:
+                if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label)
+            if training_args.do_eval:
+                if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label)
+                if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label)
+
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
             default_datasets[args.task]
+
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
+        # if dataset_id == ("merged_anli_snli",):
+        #     ps1 = tuple("facebook/anli",)
+        #     ps2 = tuple("snli",)
+        #     ds1 = datasets.load_dataset(*ps1)
+        #     ds2 = datasets.load_dataset(*ps2)
+        #     dataset = datasets.concatenate_datasets(ds1, ds2)
+        #     # dataset = datasets.load_dataset(("facebook/anli")
+        # else:
+        #     dataset = datasets.load_dataset(*dataset_id)
         dataset = datasets.load_dataset(*dataset_id)
-    
+
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
 
@@ -103,25 +186,64 @@ def main():
     if dataset_id == ('snli',):
         # remove SNLI examples with no label
         dataset = dataset.filter(lambda ex: ex['label'] != -1)
-    
+
     train_dataset = None
     eval_dataset = None
     train_dataset_featurized = None
     eval_dataset_featurized = None
-    if training_args.do_train:
-        train_dataset = dataset['train']
+
+    # Besides finetuning using LIT augmented dataset, new dataset cartography also needs train dataset
+    if training_args.do_train or args.compute_training_dynamics or (args.cartography_filter_output is not None):
+        if dataset_id is not None and any(item in ("anli","facebook/anli") for item in dataset_id):
+            # anli_r1_train = datasets.load_dataset("anli", split="train_r1")
+            # anli_r2_train = datasets.load_dataset("anli", split="train_r2")
+            # anli_r3_train = datasets.load_dataset("anli", split="train_r3")
+            anli_r1_train = dataset["train_r1"]
+            anli_r2_train = dataset["train_r2"]
+            anli_r3_train = dataset["train_r3"]
+            train_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
+            train_dataset = train_dataset.filter(lambda ex: ex['label'] != -1)
+        # train_split = 'train_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else 'train'
+        # elif dataset_id == "merged_anli_snli":
+        #     anli_r1_train = datasets.load_dataset("anli", split="train_r1")
+        #     anli_r2_train = datasets.load_dataset("anli", split="train_r2")
+        #     anli_r3_train = datasets.load_dataset("anli", split="train_r3")
+        #     snli_train = datasets.load_dataset("snli", split="train")
+        #     train_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train, snli_train])
+        #     train_dataset = train_dataset.filter(lambda ex: ex['label'] != -1)
+        else:
+            # print(f"{train_split=}")
+            # print(f"{dataset=}")
+            train_dataset = dataset["train"]
+
         if args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
+
         train_dataset_featurized = train_dataset.map(
             prepare_train_dataset,
             batched=True,
             num_proc=NUM_PREPROCESSING_WORKERS,
-            remove_columns=train_dataset.column_names
+            remove_columns=[c for c in train_dataset.column_names if c not in ('label', 'id')]
         )
+
     if training_args.do_eval:
-        eval_dataset = dataset[eval_split]
+        # print(f"{dataset_id=}")
+        # eval_split = 'test_r1' if "anli" in dataset_id else eval_split
+
+        # eval_split = 'test_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else eval_split
+        if dataset_id is not None and any(item in ("anli","facebook/anli") for item in dataset_id):
+            anli_r1_train = dataset["test_r1"]
+            anli_r2_train = dataset["test_r2"]
+            anli_r3_train = dataset["test_r3"]
+            eval_dataset = datasets.concatenate_datasets([anli_r1_train, anli_r2_train, anli_r3_train])
+            eval_dataset = eval_dataset.filter(lambda ex: ex['label'] != -1)
+        # train_split = 'train_r3' if (any(item in ("anli","facebook/anli") for item in dataset_id))  else 'train'
+        else:
+            eval_dataset = dataset[eval_split]
+
         if args.max_eval_samples:
             eval_dataset = eval_dataset.select(range(args.max_eval_samples))
+
         eval_dataset_featurized = eval_dataset.map(
             prepare_eval_dataset,
             batched=True,
@@ -145,7 +267,6 @@ def main():
             predictions=eval_preds.predictions, references=eval_preds.label_ids)
     elif args.task == 'nli':
         compute_metrics = compute_accuracy
-    
 
     # This function wraps the compute_metrics function, storing the model's predictions
     # so that they can be dumped along with the computed metrics
@@ -223,7 +344,7 @@ def main():
                     if pred != example['label']:
                         if label == 0 and pred == 1:
                             example_with_prediction['status'] = 'False Neutral - Entailment'
-                        elif label == 0 and pred == 2: 
+                        elif label == 0 and pred == 2:
                             example_with_prediction['status'] = 'False Contradict'
                         elif label == 1 and pred == 0:
                             example_with_prediction['status'] = ' False Entailment - Neutral'
@@ -238,6 +359,249 @@ def main():
                     # f.write(json.dumps(example_with_prediction))
                     # f.write('\n')
                 json.dump(eval_dataset_with_prediction, f, indent=2)
+
+    # --------------------------------------------------------------------------
+    # Dataset Cartography: compute training dynamics then do optional filtering
+    # --------------------------------------------------------------------------
+    if args.task == 'nli' and args.compute_training_dynamics:
+        print(f"[Dataset Cartography] Calculating training dynamics...")
+        if train_dataset_featurized is None or train_dataset is None:
+            raise ValueError(
+                "[Cartography] compute_training_dynamics is set, but train_dataset/train_dataset_featurized "
+                "were not prepared. Make sure you are using a dataset with a 'train' split "
+                "and that --use_custom_dataset/--train_dataset_path are set correctly."
+            )
+
+        # Find all checkpoints in output_dir; these correspond to epochs if you trained
+        # with --save_strategy epoch. This matches the behavior in Dataset Cartography, where
+        # training dynamics are recorded across multiple epochs.
+        checkpoint_paths = sorted(
+            glob.glob(os.path.join(training_args.output_dir, "checkpoint-*")),
+            key=lambda p: int(os.path.basename(p).split("-")[-1])
+        )
+        if not checkpoint_paths:
+            print(
+                f"[Cartography] No checkpoints found in {training_args.output_dir}. "
+                f"To compute training dynamics, first train with --do_train and "
+                f'--save_strategy epoch (and optionally --evaluation_strategy epoch).'
+                f"Or --save_strategy steps --save_steps 10000 also works."
+            )
+        else:
+            print(f"[Cartography] Found {len(checkpoint_paths)} checkpoints for training dynamics:")
+            for ck in checkpoint_paths:
+                print("   ", ck)
+
+            # We'll compute, for each training example i:
+            #   - confidence: mean p(gold | x_i) across epochs
+            #   - variability: stddev of p(gold | x_i) across epochs
+            #   - correctness: fraction of epochs where argmax == gold label
+            # These correspond to the coordinates used in Data Maps.
+
+            # Gold label (as numpy)
+            if 'label' in train_dataset_featurized.column_names:
+                gold_labels = np.array(train_dataset_featurized['label'], dtype=np.int64)
+            else:
+                raise ValueError(
+                    "[Cartography] Could not find 'label' column in train_dataset_featurized which is "
+                    "needed for training dynamics."
+                )
+
+            num_examples = gold_labels.shape[0]
+            num_labels = int(max(gold_labels)) + 1
+            print(f"[Cartography] Computing training dynamics for {num_examples} examples each with one of {num_labels} labels.")
+
+            # Also capture example IDs from the raw train_dataset for sanity-check later
+            if 'id' in train_dataset.column_names:
+                example_ids = list(train_dataset['id'])
+                if len(example_ids) != num_examples:
+                    raise ValueError(
+                        "[Cartography] Length mismatch between train_dataset['id'] and train_dataset_featurized."
+                    )
+            else:
+                example_ids = [str(i) for i in range(num_examples)]
+
+            def _softmax(x):
+                x = x - x.max(axis=-1, keepdims=True)
+                e = np.exp(x)
+                return e / e.sum(axis=-1, keepdims=True)
+
+            gold_probs_per_epoch = []
+            correct_per_epoch = []
+
+            for epoch_idx, ckpt_path in enumerate(checkpoint_paths, start=1):
+                print(f"[Cartography] Epoch {epoch_idx}: loading {ckpt_path}")
+                epoch_model = model_class.from_pretrained(ckpt_path, **task_kwargs)
+
+                # Make tensor contiguous if needed (ELECTRA quirk)
+                if hasattr(epoch_model, 'electra'):
+                    for param in epoch_model.electra.parameters():
+                        if not param.is_contiguous():
+                            param.data = param.data.contiguous()
+
+                # Use a lightweight TrainingArguments config for prediction only.
+                eval_args = TrainingArguments(
+                    output_dir=os.path.join(training_args.output_dir, f"td_epoch_{epoch_idx}"),
+                    per_device_eval_batch_size=training_args.per_device_eval_batch_size,
+                    do_train=False,
+                    do_eval=False,
+                    logging_strategy="no",
+                    save_strategy="no"
+                )
+
+                td_trainer = trainer_class(
+                    model=epoch_model,
+                    args=eval_args,
+                    train_dataset=None,
+                    eval_dataset=train_dataset_featurized,
+                    tokenizer=tokenizer,
+                    compute_metrics=None
+                )
+
+                print(f"[Cartography] Predicting on train set for epoch {epoch_idx}...")
+                td_output = td_trainer.predict(train_dataset_featurized)
+                logits = td_output.predictions  # [N, num_labels]
+                if logits.shape[0] != num_examples:
+                    raise ValueError("Prediction size mismatch in training dynamics.")
+
+                probs = _softmax(logits)
+                gold_prob_vec = probs[np.arange(num_examples), gold_labels]
+                preds = probs.argmax(axis=-1)
+                is_correct_vec = (preds == gold_labels).astype(np.float32)
+
+                gold_probs_per_epoch.append(gold_prob_vec)
+                correct_per_epoch.append(is_correct_vec)
+
+            # Stack into [N, T]
+            gold_probs_stack = np.stack(gold_probs_per_epoch, axis=1)
+            correct_stack = np.stack(correct_per_epoch, axis=1)
+            T = gold_probs_stack.shape[1]
+
+            confidence = gold_probs_stack.mean(axis=1)
+            variability = gold_probs_stack.std(axis=1)
+            correctness = correct_stack.mean(axis=1)
+
+            # Where to store metrics
+            metrics_output_path = args.cartography_metrics_output
+            if metrics_output_path is None:
+                metrics_output_path = os.path.join(
+                    training_args.output_dir, "cartography_metrics_snli.jsonl"
+                )
+
+            print(f"[Cartography] Writing metrics to {metrics_output_path}")
+            with open(metrics_output_path, 'w', encoding='utf-8') as f:
+                for idx in range(num_examples):
+                    rec = {
+                        "index": int(idx),
+                        "id": example_ids[idx],
+                        "gold": int(gold_labels[idx]),
+                        "confidence": float(confidence[idx]),
+                        "variability": float(variability[idx]),
+                        "correctness": float(correctness[idx]),
+                        "num_epochs": int(T)
+                    }
+                    f.write(json.dumps(rec))
+                    f.write('\n')
+
+            # Immediately filter train dataset using the metrics we just computed
+            if args.cartography_filter_output is not None:
+                if not args.use_custom_dataset or args.train_dataset_path is None:
+                    print(
+                        "[Cartography] cartography_filter_output was set, but either "
+                        "--use_custom_dataset or --train_dataset_path is missing. "
+                        "Filtering is currently only supported for custom JSON/JSONL train datasets."
+                    )
+                else:
+                    print("[Cartography] Applying cartography-based filtering to the train set...")
+
+                    drop_easy_ratio = args.drop_easy_ratio
+                    drop_hard_ratio= args.drop_hard_ratio
+                    top_ambiguous_ratio = args.top_ambiguous_ratio
+
+                    # Quantile thresholds on confidence
+                    if 0.0 < drop_easy_ratio < 1.0:
+                        easy_threshold = np.quantile(confidence, 1.0 - drop_easy_ratio)
+                    else:
+                        easy_threshold = 1.1  # effectively disables easy-dropping
+
+                    if 0.0 < drop_hard_ratio < 1.0:
+                        hard_threshold = np.quantile(confidence, drop_hard_ratio)
+                    else:
+                        hard_threshold = -0.1  # effectively disables hard-dropping
+
+                    print(f"[Cartography] Hard (low-confidence) threshold: {hard_threshold:.4f}")
+                    print(f"[Cartography] Easy (high-confidence) threshold: {easy_threshold:.4f}")
+
+                    # First pass: drop very easy (high-conf + high-correct) and very hard (low-conf + low-correct).
+                    selected_indices = []
+                    for idx in range(num_examples):
+                        c = confidence[idx]
+                        v = variability[idx]
+                        corr_i = correctness[idx]
+
+                        # Drop "too easy" examples likely dominated by artifacts.
+                        if drop_easy_ratio > 0.0 and c >= easy_threshold and corr_i >= 0.9:
+                            continue
+
+                        # Drop "too hard" / noisy examples (very low confidence and correctness).
+                        if drop_hard_ratio > 0.0 and c <= hard_threshold and corr_i <= 0.34:
+                            continue
+
+                        selected_indices.append(idx)
+
+                    print(f"[Cartography] After easy/hard filtering: {len(selected_indices)} / {num_examples} examples remain.")
+
+                    final_indices = selected_indices
+                    if 0.0 < top_ambiguous_ratio < 1.0 and len(selected_indices) > 0:
+                        vars_selected = np.array([variability[i] for i in selected_indices], dtype=np.float32)
+                        var_threshold = np.quantile(vars_selected, 1.0 - top_ambiguous_ratio)
+                        print(f"[Cartography] Variability threshold for ambiguous region: {var_threshold:.4f}")
+                        final_indices = [i for i in selected_indices if variability[i] >= var_threshold]
+
+                    print(f"[Cartography] Final selected examples: {len(final_indices)}")
+
+                    keep_set = set(final_indices)
+                    kept = 0
+
+                    # Streaming over original JSONL train file to write filtered subset.
+                    # Assumes each JSONL line corresponds to one training example in the same order
+                    # as load_dataset('json', data_files=...), double check with "id" field if present.
+                    keep_set = set(final_indices)
+                    kept = 0
+                    warn_mismatch_printed = False
+
+                    with open(args.train_dataset_path, 'r', encoding='utf-8') as fin, \
+                         open(args.cartography_filter_output, 'w', encoding='utf-8') as fout:
+                        for idx, line in enumerate(fin):
+                            # Parse to get the id
+                            try:
+                                obj = json.loads(line)
+                            except json.JSONDecodeError:
+                                # If something is malformed, just skip it
+                                continue
+
+                            line_id = obj.get("id", None)
+
+                            # Sanity check: if we have an expected id for this index, verify it matches.
+                            if idx < len(example_ids) and line_id is not None:
+                                expected_id = example_ids[idx]
+                                if line_id != expected_id and not warn_mismatch_printed:
+                                    print(
+                                        "[Cartography] WARNING: ID mismatch between raw JSONL and "
+                                        "HF dataset order at index {}: JSONL id='{}', dataset id='{}'. "
+                                        "Check that train_dataset_path matches the dataset used for "
+                                        "training/carto.".format(idx, line_id, expected_id)
+                                    )
+                                    warn_mismatch_printed = True
+
+                            # Index-based filtering as before
+                            if idx in keep_set:
+                                fout.write(line)
+                                kept += 1
+
+                    print(
+                        f"[Cartography] Wrote {kept} filtered training examples to "
+                        f"{args.cartography_filter_output}"
+                    )
 
 
 if __name__ == "__main__":

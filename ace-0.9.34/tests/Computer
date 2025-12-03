@@ -1,0 +1,322 @@
+File:Columbia Supercomputer - NASA Advanced Supercomputing Facility.jpg|240px|thumb|The Columbia Supercomputer, located at the NASA Ames Research Center.
+A computer is a machine that manipulates data according to a set of instructions.
+Although mechanical examples of computers have existed through much of recorded human history, the first electronic computers were developed in the mid-20th century (1940–1945).
+ These were the size of a large room, consuming as much power as several hundred modern personal computers (PCs).
+ Modern computers based on integrated circuits are millions to billions of times more capable than the early machines, and occupy a fraction of the space.
+ Simple computers are small enough to fit into a wristwatch, and can be powered by a watch battery.
+ Personal computers in their various forms are icons of the Information Age and are what most people think of as "computers".
+ The embedded computers found in many devices from MP3 players to fighter aircraft and from toys to industrial robots are however the most numerous.
+The ability to store and execute lists of instructions called programs makes computers extremely versatile, distinguishing them from calculators.
+ The Church–Turing thesis is a mathematical statement of this versatility: any computer with a certain minimum capability is, in principle, capable of performing the same tasks that any other computer can perform.
+ Therefore computers ranging from a mobile phone to a supercomputer are all able to perform the same computational tasks, given enough time and storage capacity.
+File:Jacquard.loom.full.view.jpg|thumb|The Jacquard loom, on display at the Museum of Science and Industry in Manchester, England, was one of the first programmable devices.
+The first use of the word "computer" was recorded in 1613, referring to a person who carried out calculations, or computations, and the word continued to be used in that sense until the middle of the 20th century.
+ From the end of the 19th century onwards though, the word began to take on its more familiar meaning, describing a machine that carries out computations.
+The history of the modern computer begins with two separate technologies—automated calculation and programmability—but no single device can be identified as the earliest computer, partly because of the inconsistent application of that term.
+ Examples of early mechanical calculating devices include the abacus, the slide rule and arguably the astrolabe and the Antikythera mechanism (which dates from about 150–100 BC).
+ Hero of Alexandria (c. 10–70 AD) built a mechanical theater which performed a play lasting 10 minutes and was operated by a complex system of ropes and drums that might be considered to be a means of deciding which parts of the mechanism performed which actions and when.
+ This is the essence of programmability.
+The "castle clock", an astronomical clock invented by Al-Jazari in 1206, is considered to be the earliest programmable analog computer.
+ It displayed the zodiac, the solar and lunar orbits, a crescent moon-shaped pointer travelling across a gateway causing automatic doors to open every hour, and five robotic musicians who played music when struck by levers operated by a camshaft attached to a water wheel.
+ The length of day and night could be re-programmed to compensate for the changing lengths of day and night throughout the year.
+ Limited finances and Babbage's inability to resist tinkering with the design meant that the device was never completed.
+In the late 1880s, Herman Hollerith invented the recording of data on a machine readable medium.
+ Prior uses of machine readable media, above, had been for control, not data.
+ "After some initial trials with paper tape, he settled on punched cards ..."
+ To process these punched cards he invented the tabulator, and the keypunch machines.
+ These three inventions were the foundation of the modern information processing industry.
+ Large-scale automated data processing of punched cards was performed for the 1890 United States Census by Hollerith's company, which later became the core of IBM. By the end of the 19th century a number of technologies that would later prove useful in the realization of practical computers had begun to appear: the punched card, Boolean algebra, the vacuum tube (thermionic valve) and the teleprinter.
+During the first half of the 20th century, many scientific computing needs were met by increasingly sophisticated analog computers, which used a direct mechanical or electrical model of the problem as a basis for computation.
+ However, these were not programmable and generally lacked the versatility and accuracy of modern digital computers.
+Alan Turing is widely regarded to be the father of modern computer science.
+ In 1936 Turing provided an influential formalisation of the concept of the algorithm and computation with the Turing machine.
+ Of his role in the modern computer, Time Magazine in naming Turing one of the 100 most influential people of the 20th century, states: "The fact remains that everyone who taps at a keyboard, opening a spreadsheet or a word-processing program, is working on an incarnation of a Turing machine."
+The inventor of the program-controlled computer was Konrad Zuse, who built the first working computer in 1941 and later in 1955 the first computer based on magnetic storage.
+George Stibitz is internationally recognized as a father of the modern digital computer.
+ While working at Bell Labs in November 1937, Stibitz invented and built a relay-based calculator he dubbed the "Model K" (for "kitchen table", on which he had assembled it), which was the first to use binary circuits to perform an arithmetic operation.
+ Later models added greater sophistication including complex arithmetic and programmability.
+A succession of steadily more powerful and flexible computing devices were constructed in the 1930s and 1940s, gradually adding the key features that are seen in modern computers.
+ The use of digital electronics (largely invented by Claude Shannon in 1937) and more flexible programmability were vitally important steps, but defining one point along this road as "the first digital electronic computer" is difficult.
+ Notable achievements include:
+File:EDSAC (10).jpg|thumb|right|200px|EDSAC was one of the first computers to implement the stored program (von Neumann) architecture.
+File:80486dx2-large.jpg|thumb|right|200px|Die of an Intel 80486DX2 microprocessor (actual size: 12×6.75 mm) in its packaging.
+ Konrad Zuse's electromechanical "Z machines".
+ The Z3 (1941) was the first working machine featuring binary arithmetic, including floating point arithmetic and a measure of programmability.
+ In 1998 the Z3 was proved to be Turing complete, therefore being the world's first operational computer.
+ The non-programmable Atanasoff–Berry Computer (1941) which used vacuum tube based computation, binary numbers, and regenerative capacitor memory.
+ The use of regenerative memory allowed it to be much more compact then its peers (being approximately the size of a large desk or workbench), since intermediate results could be stored and then fed back into the same set of computation elements.
+ The secret British Colossus computers (1943), which had limited programmability but demonstrated that a device using thousands of tubes could be reasonably reliable and electronically reprogrammable.
+ It was used for breaking German wartime codes.
+ The Harvard Mark I (1944), a large-scale electromechanical computer with limited programmability.
+ The U.S. Army's Ballistic Research Laboratory ENIAC (1946), which used decimal arithmetic and is sometimes called the first general purpose electronic computer (since Konrad Zuse's Z3 of 1941 used electromagnets instead of electronics).
+ Initially, however, ENIAC had an inflexible architecture which essentially required rewiring to change its programming.
+Several developers of ENIAC, recognizing its flaws, came up with a far more flexible and elegant design, which came to be known as the "stored program architecture" or von Neumann architecture.
+ This design was first formally described by John von Neumann in the paper First Draft of a Report on the EDVAC, distributed in 1945.
+ A number of projects to develop computers based on the stored-program architecture commenced around this time, the first of these being completed in Great Britain.
+ The first to be demonstrated working was the Manchester Small-Scale Experimental Machine (SSEM or "Baby"), while the EDSAC, completed a year after SSEM, was the first practical implementation of the stored program design.
+ Shortly thereafter, the machine originally described by von Neumann's paper—EDVAC—was completed but did not see full-time use for an additional two years.
+Nearly all modern computers implement some form of the stored-program architecture, making it the single trait by which the word "computer" is now defined.
+ While the technologies used in computers have changed dramatically since the first electronic, general-purpose computers of the 1940s, most still use the von Neumann architecture.
+Computers using vacuum tubes as their electronic elements were in use throughout the 1950s, but by the 1960s had been largely replaced by transistor-based machines, which were smaller, faster, cheaper to produce, required less power, and were more reliable.
+ The first transistorised computer was demonstrated at the University of Manchester in 1953.
+ In the 1970s, integrated circuit technology and the subsequent creation of microprocessors, such as the Intel 4004, further decreased size and cost and further increased speed and reliability of computers.
+ By the late 1970s, many products such as video recorders contained dedicated computers called microcontrollers, and they started to appear as a replacement to mechanical controls in domestic appliances such as washing machines.
+ The 1980s witnessed home computers and the now ubiquitous personal computer.
+ With the evolution of the Internet, personal computers are becoming as common as the television and the telephone in the household.
+Modern smartphones are fully-programmable computers in their own right, and as of 2009 may well be the most common form of such computers in existence.
+The defining feature of modern computers which distinguishes them from all other machines is that they can be programmed.
+ That is to say that a list of instructions (the program) can be given to the computer and it will store them and carry them out at some time in the future.
+In most cases, computer instructions are simple: add one number to another, move some data from one location to another, send a message to some external device, etc.
+ These instructions are read from the computer's memory and are generally carried out (executed) in the order they were given.
+ However, there are usually specialized instructions to tell the computer to jump ahead or backwards to some other place in the program and to carry on executing from there.
+ These are called "jump" instructions (or branches).
+ Furthermore, jump instructions may be made to happen conditionally so that different sequences of instructions may be used depending on the result of some previous calculation or some external event.
+ Many computers directly support subroutines by providing a type of jump that "remembers" the location it jumped from and another instruction to return to the instruction following that jump instruction.
+Program execution might be likened to reading a book.
+ While a person will normally read each word and line in sequence, they may at times jump back to an earlier place in the text or skip sections that are not of interest.
+ Similarly, a computer may sometimes go back and repeat the instructions in some section of the program over and over again until some internal condition is met.
+ This is called the flow of control within the program and it is what allows the computer to perform tasks repeatedly without human intervention.
+Comparatively, a person using a pocket calculator can perform a basic arithmetic operation such as adding two numbers with just a few button presses.
+ But to add together all of the numbers from 1 to 1,000 would take thousands of button presses and a lot of time—with a near certainty of making a mistake.
+ On the other hand, a computer may be programmed to do this with just a few simple instructions.
+ For example:
+ mov #0,sum ; set sum to 0
+ mov #1,num ; set num to 1
+ loop: add num,sum ; add num to sum
+ add #1,num ; add 1 to num
+ cmp num,#1000 ; compare num to 1000
+ ble loop ; if num 
+However, computers cannot "think" for themselves in the sense that they only solve problems in exactly the way they are programmed to.
+ An intelligent human faced with the above addition task might soon realize that instead of actually adding up all the numbers one can simply use the equation
+ 1+2+3+...+n = n(n+1)} \over 2}
+and arrive at the correct answer (500,500) with little work.
+ In other words, a computer programmed to add up the numbers one by one as in the example above would do exactly that without regard to efficiency or alternative solutions.
+File:FortranCardPROJ039.agr.jpg|thumb|right|300px|A 1970s punched card containing one line from a FORTRAN program.
+ The card reads: "Z(1) = Y + W(1)" and is labelled "PROJ039" for identification purposes.
+In practical terms, a computer program may run from just a few instructions to many millions of instructions, as in a program for a word processor or a web browser.
+ A typical modern computer can execute billions of instructions per second (gigahertz or GHz) and rarely make a mistake over many years of operation.
+ Large computer programs consisting of several million instructions may take teams of programmers years to write, and due to the complexity of the task almost certainly contain errors.
+Errors in computer programs are called "bugs".
+ Bugs may be benign and not affect the usefulness of the program, or have only subtle effects.
+ But in some cases they may cause the program to "hang"—become unresponsive to input such as mouse clicks or keystrokes, or to completely fail or "crash".
+ Otherwise benign bugs may sometimes may be harnessed for malicious intent by an unscrupulous user writing an "exploit"—code designed to take advantage of a bug and disrupt a program's proper execution.
+ Bugs are usually not the fault of the computer.
+ Since computers merely execute the instructions they are given, bugs are nearly always the result of programmer error or an oversight made in the program's design.
+In most computers, individual instructions are stored as machine code with each instruction being given a unique number (its operation code or opcode for short).
+ The command to add two numbers together would have one opcode, the command to multiply them would have a different opcode and so on.
+ The simplest computers are able to perform any of a handful of different instructions; the more complex computers have several hundred to choose from—each with a unique numerical code.
+ Since the computer's memory is able to store numbers, it can also store the instruction codes.
+ This leads to the important fact that entire programs (which are just lists of instructions) can be represented as lists of numbers and can themselves be manipulated inside the computer just as if they were numeric data.
+ The fundamental concept of storing programs in the computer's memory alongside the data they operate on is the crux of the von Neumann, or stored program, architecture.
+ In some cases, a computer might store some or all of its program in memory that is kept separate from the data it operates on.
+ This is called the Harvard architecture after the Harvard Mark I computer.
+ Modern von Neumann computers display some traits of the Harvard architecture in their designs, such as in CPU caches.
+While it is possible to write computer programs as long lists of numbers (machine language) and this technique was used with many early computers, it is extremely tedious to do so in practice, especially for complicated programs.
+ Instead, each basic instruction can be given a short name that is indicative of its function and easy to remember—a mnemonic such as ADD, SUB, MULT or JUMP. These mnemonics are collectively known as a computer's assembly language.
+ Converting programs written in assembly language into something the computer can actually understand (machine language) is usually done by a computer program called an assembler.
+ Machine languages and the assembly languages that represent them (collectively termed low-level programming languages) tend to be unique to a particular type of computer.
+ For instance, an ARM architecture computer (such as may be found in a PDA or a hand-held videogame) cannot understand the machine language of an Intel Pentium or the AMD Athlon 64 computer that might be in a PC.
+Though considerably easier than in machine language, writing long programs in assembly language is often difficult and error prone.
+ Therefore, most complicated programs are written in more abstract high-level programming languages that are able to express the needs of the programmer more conveniently (and thereby help reduce programmer error).
+ High level languages are usually "compiled" into machine language (or sometimes into assembly language and then into machine language) using another computer program called a compiler.
+ Since high level languages are more abstract than assembly language, it is possible to use different compilers to translate the same high level language program into the machine language of many different types of computer.
+ This is part of the means by which software like video games may be made available for different computer architectures such as personal computers and various video game consoles.
+The task of developing large software systems presents a significant intellectual challenge.
+ Producing software with an acceptably high reliability within a predictable schedule and budget has historically been difficult; the academic and professional discipline of software engineering concentrates specifically on this challenge.
+right|thumb|A traffic light showing red
+Suppose a computer is being employed to drive a traffic light at an intersection between two streets.
+ The computer has the following three basic instructions.
+ ON(Streetname, Color) Turns the light on Streetname with a specified Color on.
+ OFF(Streetname, Color) Turns the light on Streetname with a specified Color off.
+ WAIT(Seconds) Waits a specifed number of seconds.
+ START Starts the program
+ REPEAT Tells the computer to repeat a specified part of the program in a loop.
+Comments are marked with a // on the left margin.
+ Comments in a computer program do not affect the operation of the program.
+ They are not evaluated by the computer.
+Assume the streetnames are Broadway and Main.
+ START
+ //Let Broadway traffic go
+ OFF(Broadway, Red)
+ ON(Broadway, Green)
+ WAIT(60 seconds)
+ //Stop Broadway traffic
+ OFF(Broadway, Green)
+ ON(Broadway, Yellow)
+ WAIT(3 seconds)
+ OFF(Broadway, Yellow)
+ ON(Broadway, Red)
+ //Let Main traffic go
+ OFF(Main, Red)
+ ON(Main, Green)
+ WAIT(60 seconds)
+ //Stop Main traffic
+ OFF(Main, Green)
+ ON(Main, Yellow)
+ WAIT(3 seconds)
+ OFF(Main, Yellow)
+ ON(Main, Red)
+ //Tell computer to continuously repeat the program.
+ REPEAT ALL
+With this set of instructions, the computer would cycle the light continually through red, green, yellow and back to red again on both streets.
+However, suppose there is a simple on/off switch connected to the computer that is intended to be used to make the light flash red while some maintenance operation is being performed.
+ The program might then instruct the computer to:
+ START
+ IF Switch  ON THEN: //Maintenance Mode
+ {
+ //Turn the red lights on and wait 1 second.
+ ON(Broadway, Red)
+ ON(Main, Red)
+ WAIT(1 second)
+ //Turn the red lights off and wait 1 second.
+ OFF(Broadway, Red)
+ OFF(Main, Red)
+ WAIT(1 second)
+ //Tell the comptuer to repeat the statements in this section.
+ REPEAT THIS SECTION
+ }
+In this manner, the traffic signal will run a flash-red program when the switch is on, and will run the normal program when the switch is off.
+ Both of these program examples show the basic layout of a computer program in a simple, familiar context of a traffic signal.
+ Any experienced programmer can spot many software bugs in the program, for instance, not making sure that the green light is off when the switch is set to flash red.
+ However, to remove all possible bugs would make this program much longer and more complicated, and would be confusing to nontechnical readers: the aim of this example is a simple demonstration of how computer instructions are laid out.
+A general purpose computer has four main components: the arithmetic logic unit (ALU), the control unit, the memory, and the input and output devices (collectively termed I/O).
+ These parts are interconnected by busses, often made of groups of wires.
+Inside each of these parts are thousands to trillions of small electrical circuits which can be turned off or on by means of an electronic switch.
+ Each circuit represents a bit (binary digit) of information so that when the circuit is on it represents a "1", and when off it represents a "0" (in positive logic representation).
+ The circuits are arranged in logic gates so that one or more of the circuits may control the state of one or more of the other circuits.
+The control unit, ALU, registers, and basic I/O (and often other hardware closely linked with these) are collectively known as a central processing unit (CPU).
+ Early CPUs were composed of many separate components but since the mid-1970s CPUs have typically been constructed on a single integrated circuit called a microprocessor.
+File:Mips32 addi.svg|thumb|260px|right|Diagram showing how a particular MIPS architecture instruction would be decoded by the control system.
+The control unit (often called a control system or central controller) manages the computer's various components; it reads and interprets (decodes) the program instructions, transforming them into a series of control signals which activate other parts of the computer.
+ Control systems in advanced computers may change the order of some instructions so as to improve performance.
+A key component common to all CPUs is the program counter, a special memory cell (a register) that keeps track of which location in memory the next instruction is to be read from.
+The control system's function is as follows—note that this is a simplified description, and some of these steps may be performed concurrently or in a different order depending on the type of CPU:
+ Read the code for the next instruction from the cell indicated by the program counter.
+ Decode the numerical code for the instruction into a set of commands or signals for each of the other systems.
+ Increment the program counter so it points to the next instruction.
+ Read whatever data the instruction requires from cells in memory (or perhaps from an input device).
+ The location of this required data is typically stored within the instruction code.
+ Provide the necessary data to an ALU or register.
+ If the instruction requires an ALU or specialized hardware to complete, instruct the hardware to perform the requested operation.
+ Write the result from the ALU back to a memory location or to a register or perhaps an output device.
+ Jump back to step (1).
+Since the program counter is (conceptually) just another set of memory cells, it can be changed by calculations done in the ALU. Adding 100 to the program counter would cause the next instruction to be read from a place 100 locations further down the program.
+ Instructions that modify the program counter are often known as "jumps" and allow for loops (instructions that are repeated by the computer) and often conditional instruction execution (both examples of control flow).
+It is noticeable that the sequence of operations that the control unit goes through to process an instruction is in itself like a short computer program—and indeed, in some more complex CPU designs, there is another yet smaller computer called a microsequencer that runs a microcode program that causes all of these events to happen.
+The ALU is capable of performing two classes of operations: arithmetic and logic.
+The set of arithmetic operations that a particular ALU supports may be limited to adding and subtracting or might include multiplying or dividing, trigonometry functions (sine, cosine, etc) and square roots.
+ Some can only operate on whole numbers (integers) whilst others use floating point to represent real numbers—albeit with limited precision.
+ However, any computer that is capable of performing just the simplest operations can be programmed to break down the more complex operations into simple steps that it can perform.
+ Therefore, any computer can be programmed to perform any arithmetic operation—although it will take more time to do so if its ALU does not directly support the operation.
+ An ALU may also compare numbers and return boolean truth values (true or false) depending on whether one is equal to, greater than or less than the other ("is 64 greater than 65?").
+Logic operations involve Boolean logic: AND, OR, XOR and NOT.
+ These can be useful both for creating complicated conditional statements and processing boolean logic.
+Superscalar computers may contain multiple ALUs so that they can process several instructions at the same time.
+ Graphics processors and computers with SIMD and MIMD features often provide ALUs that can perform arithmetic on vectors and matrices.
+File:Magnetic core.jpg|thumb|right|Magnetic core memory was the computer memory of choice throughout the 1960s, until it was replaced by semiconductor memory.
+A computer's memory can be viewed as a list of cells into which numbers can be placed or read.
+ Each cell has a numbered "address" and can store a single number.
+ The computer can be instructed to "put the number 123 into the cell numbered 1357" or to "add the number that is in cell 1357 to the number that is in cell 2468 and put the answer into cell 1595".
+ The information stored in memory may represent practically anything.
+ Letters, numbers, even computer instructions can be placed into memory with equal ease.
+ Since the CPU does not differentiate between different types of information, it is the software's responsibility to give significance to what the memory sees as nothing but a series of numbers.
+In almost all modern computers, each memory cell is set up to store binary numbers in groups of eight bits (called a byte).
+ Each byte is able to represent 256 different numbers (2^8 = 256); either from 0 to 255 or -128 to +127.
+ To store larger numbers, several consecutive bytes may be used (typically, two, four or eight).
+ When negative numbers are required, they are usually stored in two's complement notation.
+ Other arrangements are possible, but are usually not seen outside of specialized applications or historical contexts.
+ A computer can store any kind of information in memory if it can be represented numerically.
+ Modern computers have billions or even trillions of bytes of memory.
+The CPU contains a special set of memory cells called registers that can be read and written to much more rapidly than the main memory area.
+ There are typically between two and one hundred registers depending on the type of CPU. Registers are used for the most frequently needed data items to avoid having to access main memory every time data is needed.
+ As data is constantly being worked on, reducing the need to access main memory (which is often slow compared to the ALU and control units) greatly increases the computer's speed.
+Computer main memory comes in two principal varieties: random-access memory or RAM and read-only memory or ROM. RAM can be read and written to anytime the CPU commands it, but ROM is pre-loaded with data and software that never changes, so the CPU can only read from it.
+ ROM is typically used to store the computer's initial start-up instructions.
+ In general, the contents of RAM are erased when the power to the computer is turned off, but ROM retains its data indefinitely.
+ In a PC, the ROM contains a specialized program called the BIOS that orchestrates loading the computer's operating system from the hard disk drive into RAM whenever the computer is turned on or reset.
+ In embedded computers, which frequently do not have disk drives, all of the required software may be stored in ROM. Software stored in ROM is often called firmware, because it is notionally more like hardware than software.
+ Flash memory blurs the distinction between ROM and RAM, as it retains its data when turned off but is also rewritable.
+ It is typically much slower than conventional ROM and RAM however, so its use is restricted to applications where high speed is unnecessary.
+In more sophisticated computers there may be one or more RAM cache memories which are slower than registers but faster than main memory.
+ Generally computers with this sort of cache are designed to move frequently needed data into the cache automatically, often without the need for any intervention on the programmer's part.
+File:HDDspin.JPG|thumb|right|Hard disk drives are common I/O devices used with computers.
+I/O is the means by which a computer exchanges information with the outside world.
+ Devices that provide input or output to the computer are called peripherals.
+ On a typical personal computer, peripherals include input devices like the keyboard and mouse, and output devices such as the display and printer.
+ Hard disk drives, floppy disk drives and optical disc drives serve as both input and output devices.
+ Computer networking is another form of I/O.
+Often, I/O devices are complex computers in their own right with their own CPU and memory.
+ A graphics processing unit might contain fifty or more tiny computers that perform the calculations necessary to display 3D graphics.
+ Modern desktop computers contain many smaller computers that assist the main CPU in performing I/O.
+While a computer may be viewed as running one gigantic program stored in its main memory, in some systems it is necessary to give the appearance of running several programs simultaneously.
+ This is achieved by multitasking i.e. having the computer switch rapidly between running each program in turn.
+One means by which this is done is with a special signal called an interrupt which can periodically cause the computer to stop executing instructions where it was and do something else instead.
+ By remembering where it was executing prior to the interrupt, the computer can return to that task later.
+ If several programs are running "at the same time", then the interrupt generator might be causing several hundred interrupts per second, causing a program switch each time.
+ Since modern computers typically execute instructions several orders of magnitude faster than human perception, it may appear that many programs are running at the same time even though only one is ever executing in any given instant.
+ This method of multitasking is sometimes termed "time-sharing" since each program is allocated a "slice" of time in turn.
+Before the era of cheap computers, the principle use for multitasking was to allow many people to share the same computer.
+Seemingly, multitasking would cause a computer that is switching between several programs to run more slowly — in direct proportion to the number of programs it is running.
+ However, most programs spend much of their time waiting for slow input/output devices to complete their tasks.
+ If a program is waiting for the user to click on the mouse or press a key on the keyboard, then it will not take a "time slice" until the event it is waiting for has occurred.
+ This frees up time for other programs to execute so that many programs may be run at the same time without unacceptable speed loss.
+File:Cray 2 Arts et Metiers dsc03940.jpg|thumb|Cray designed many supercomputers that used multiprocessing heavily.
+Some computers are designed to distribute their work across several CPUs in a multiprocessing configuration, a technique once employed only in large and powerful machines such as supercomputers, mainframe computers and servers.
+ Multiprocessor and multi-core (multiple CPUs on a single integrated circuit) personal and laptop computers are now widely available, and are being increasingly used in lower-end markets as a result.
+Supercomputers in particular often have highly unique architectures that differ significantly from the basic stored-program architecture and from general purpose computers.
+ They often feature thousands of CPUs, customized high-speed interconnects, and specialized computing hardware.
+ Such designs tend to be useful only for specialized tasks due to the large scale of program organization required to successfully utilize most of the available resources at once.
+ Supercomputers usually see usage in large-scale simulation, graphics rendering, and cryptography applications, as well as with other so-called "embarrassingly parallel" tasks.
+File:Internet map 1024.jpg|thumb|220px|left|Visualization of a portion of the routes on the Internet.
+Computers have been used to coordinate information between multiple locations since the 1950s.
+ The U.S. military's SAGE system was the first large-scale example of such a system, which led to a number of special-purpose commercial systems like Sabre.
+In the 1970s, computer engineers at research institutions throughout the United States began to link their computers together using telecommunications technology.
+ This effort was funded by ARPA (now DARPA), and the computer network that it produced was called the ARPANET.
+ The technologies that made the Arpanet possible spread and evolved.
+In time, the network spread beyond academic and military institutions and became known as the Internet.
+ The emergence of networking involved a redefinition of the nature and boundaries of the computer.
+ Computer operating systems and applications were modified to include the ability to define and access the resources of other computers on the network, such as peripheral devices, stored information, and the like, as extensions of the resources of an individual computer.
+ Initially these facilities were available primarily to people working in high-tech environments, but in the 1990s the spread of applications like e-mail and the World Wide Web, combined with the development of cheap, fast networking technologies like Ethernet and ADSL saw computer networking become almost ubiquitous.
+ In fact, the number of computers that are networked is growing phenomenally.
+ A very large proportion of personal computers regularly connect to the Internet to communicate and receive information.
+ "Wireless" networking, often utilizing mobile phone networks, has meant networking is becoming increasingly ubiquitous even in mobile computing environments.
+The term hardware covers all of those parts of a computer that are tangible objects.
+ Circuits, displays, power supplies, cables, keyboards, printers and mice are all hardware.
+Software refers to parts of the computer which do not have a material form, such as programs, data, protocols, etc.
+ When software is stored in hardware that cannot easily be modified (such as BIOS ROM in an IBM PC compatible), it is sometimes called "firmware" to indicate that it falls into an uncertain area somewhere between hardware and software.
+Programming languages provide various ways of specifying programs for computers to run.
+ Unlike natural languages, programming languages are designed to permit no ambiguity and to be concise.
+ They are purely written languages and are often difficult to read aloud.
+ They are generally either translated into machine code by a compiler or an assembler before being run, or translated directly at run time by an interpreter.
+ Sometimes programs are executed by a hybrid method of the two techniques.
+ There are thousands of different programming languages—some intended to be general purpose, others useful only for highly specialized applications.
+As the use of computers has spread throughout society, there are an increasing number of careers involving computers.
+The need for computers to work well together and to be able to exchange information has spawned the need for many standards organizations, clubs and societies of both a formal and informal nature.
+ Computability theory (computer science)
+ Computer generated holography
+ Computer security and Computer insecurity
+ Electronic waste
+ List of computer term etymologies
+ List of fictional computers
+ Living computers theory
+ Pulse computer
+ The Secret Guide to Computers (book)
+ Platform virtualization
+  
+  
+  
+  
+  
+  
+Category:American inventions
+Category:Hungarian inventions
+zh-min-nan:Tiān-náu
+be-x-old:Кампутар
+nv:Béésh bee akʼeʼelchíhí tʼáá bí nitsékeesígíí
+el:Ηλεκτρονικός υπολογιστής
+mr:संगणक विज्ञान
+nds-nl:Komputer
+simple:Computer
+vi:Máy tính
+zh-yue:電腦
+bat-smg:Kuompioteris
