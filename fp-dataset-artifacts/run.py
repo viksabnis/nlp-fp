@@ -8,6 +8,7 @@ import os
 import json
 import glob
 import numpy as np
+from datetime import datetime
 
 NUM_PREPROCESSING_WORKERS = 4
 
@@ -74,13 +75,13 @@ def main():
     argp.add_argument('--compute_training_dynamics', action='store_true',
                       help="""Load all checkpoints in output_dir and compute training-dynamics-based
         cartography metrics on the train split. Requires that checkpoints already exist in output_dir.""")
-    argp.add_argument('--cartography_metrics_output_path', type=str, default=None,
-                      help="""Optional path to write cartography metrics JSONL.
-                      Default: <output_dir>/cartography_metrics_snli.jsonl""")
-    argp.add_argument('--cartography_filter_output', type=str, default=None,
-                      help="""Optional output path for a filtered train JSONL produced using
+    argp.add_argument('--cartography_metrics_output_dir', type=str, default=None,
+                      help="""Optional output directory to write cartography metrics jsonl.
+                      Default: <output_dir>/cartography_metrics_snli/""")
+    argp.add_argument('--cartography_filter_output_dir', type=str, default=None,
+                      help="""Optional output directory for a filtered train input jsonl produced using
                       cartography metrics. Only supported when using --use_custom_dataset and
-                      --train_dataset_path.""")
+                      --train_dataset_path. Default: None (no filtering).""")
     argp.add_argument('--drop_easy_ratio', type=float, default=0.4,
                       help="""Fraction of easiest (highest-confidence, high-correctness) examples
                       to drop when filtering (cartography).""")
@@ -130,11 +131,13 @@ def main():
 
         # SNLI dataset uses string labels and needs mapping, only map what we need
         if args.task == 'nli':
-            if training_args.do_train:
-                if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label)
-            if training_args.do_eval:
-                if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label)
-                if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label)
+            if args.force_nli_label_mapping:
+                print("Mapping NLI dataset label from string to integer...")
+                if training_args.do_train or args.compute_training_dynamics or (args.cartography_filter_output_dir is not None):
+                    if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label)
+                if training_args.do_eval:
+                    if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label)
+                    if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label)
 
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
@@ -193,7 +196,7 @@ def main():
     eval_dataset_featurized = None
 
     # Besides finetuning using LIT augmented dataset, new dataset cartography also needs train dataset
-    if training_args.do_train or args.compute_training_dynamics or (args.cartography_filter_output is not None):
+    if training_args.do_train or args.compute_training_dynamics or (args.cartography_filter_output_dir is not None):
         if dataset_id is not None and any(item in ("anli","facebook/anli") for item in dataset_id):
             # anli_r1_train = datasets.load_dataset("anli", split="train_r1")
             # anli_r2_train = datasets.load_dataset("anli", split="train_r2")
@@ -481,13 +484,15 @@ def main():
             correctness = correct_stack.mean(axis=1)
 
             # Where to store metrics
-            metrics_output_path = args.cartography_metrics_output
-            if metrics_output_path is None:
-                metrics_output_path = os.path.join(
-                    training_args.output_dir, "cartography_metrics_snli.jsonl"
-                )
-
+            if args.cartography_metrics_output_dir is None:
+                metrics_output_dir = os.path.dirname(os.path.join(training_args.output_dir, "cartography_metrics_snli"))
+            else:
+                metrics_output_dir = os.path.dirname(args.cartography_metrics_output_dir)
+            if not os.path.exists(metrics_output_dir):
+                os.makedirs(metrics_output_dir, exist_ok=True)
+            metrics_output_path = os.path.join(metrics_output_dir, f"cartography_metrics_snli_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
             print(f"[Cartography] Writing metrics to {metrics_output_path}")
+
             with open(metrics_output_path, 'w', encoding='utf-8') as f:
                 for idx in range(num_examples):
                     rec = {
@@ -503,10 +508,15 @@ def main():
                     f.write('\n')
 
             # Immediately filter train dataset using the metrics we just computed
-            if args.cartography_filter_output is not None:
+            if not os.path.exists(metrics_output_dir):
+                os.makedirs(metrics_output_dir, exist_ok=True)
+            metrics_output_path = os.path.join(metrics_output_dir, f"cartography_metrics_snli_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
+            print(f"[Cartography] Writing metrics to {metrics_output_path}")
+
+            if args.cartography_filter_output_dir is not None:
                 if not args.use_custom_dataset or args.train_dataset_path is None:
                     print(
-                        "[Cartography] cartography_filter_output was set, but either "
+                        "[Cartography] cartography_filter_output_dir was set, but either "
                         "--use_custom_dataset or --train_dataset_path is missing. "
                         "Filtering is currently only supported for custom JSON/JSONL train datasets."
                     )
@@ -559,48 +569,82 @@ def main():
 
                     print(f"[Cartography] Final selected examples: {len(final_indices)}")
 
-                    keep_set = set(final_indices)
-                    kept = 0
-
-                    # Streaming over original JSONL train file to write filtered subset.
+                    # Streaming over original train jsonl files to write filtered subset using glob
                     # Assumes each JSONL line corresponds to one training example in the same order
                     # as load_dataset('json', data_files=...), double check with "id" field if present.
+
+                    # Prepare filter output directory
+                    filter_output_dir = os.path.dirname(args.cartography_filter_output_dir)
+                    if not filter_output_dir:
+                        raise ValueError(
+                            "[Cartography] cartography_filter_output_path must be a directory path, "
+                            "e.g. '--cartography_filter_output_path /path/to/filtered_snli_dir'."
+                        )
+                    if not os.path.exists(filter_output_dir):
+                        os.makedirs(filter_output_dir, exist_ok=True)
+
+                    # Expand glob for train_dataset_path as file list
+                    train_paths = sorted(glob.glob(args.train_dataset_path))
+                    if not train_paths:
+                        raise ValueError(
+                            f"[Cartography] No training files matched pattern: {args.train_dataset_path}"
+                        )
+
+                    print("[Cartography] Implementing one-to-one filtering for each train shard...")
+                    for p in train_paths:
+                        print("   [input shard]", p)
+
                     keep_set = set(final_indices)
-                    kept = 0
+                    global_idx = 0  # index into HF train_dataset / metrics arrays
+                    kept_total = 0
                     warn_mismatch_printed = False
 
-                    with open(args.train_dataset_path, 'r', encoding='utf-8') as fin, \
-                         open(args.cartography_filter_output, 'w', encoding='utf-8') as fout:
-                        for idx, line in enumerate(fin):
-                            # Parse to get the id
-                            try:
-                                obj = json.loads(line)
-                            except json.JSONDecodeError:
-                                # If something is malformed, just skip it
-                                continue
+                    # One output file per input shard, same basename, in filter_output_dir
+                    for in_path in train_paths:
+                        shard_name = os.path.basename(in_path)
+                        out_path = os.path.join(filter_output_dir, shard_name)
 
-                            line_id = obj.get("id", None)
+                        print(f"[Cartography]  Filtering shard:")
+                        print(f"   Input : {in_path}")
+                        print(f"   Output: {out_path}")
 
-                            # Sanity check: if we have an expected id for this index, verify it matches.
-                            if idx < len(example_ids) and line_id is not None:
-                                expected_id = example_ids[idx]
-                                if line_id != expected_id and not warn_mismatch_printed:
-                                    print(
-                                        "[Cartography] WARNING: ID mismatch between raw JSONL and "
-                                        "HF dataset order at index {}: JSONL id='{}', dataset id='{}'. "
-                                        "Check that train_dataset_path matches the dataset used for "
-                                        "training/carto.".format(idx, line_id, expected_id)
-                                    )
-                                    warn_mismatch_printed = True
+                        with open(in_path, 'r', encoding='utf-8') as fin, \
+                             open(out_path, 'w', encoding='utf-8') as fout:
+                            for line in fin:
+                                # Parse to get the id
+                                try:
+                                    obj = json.loads(line)
+                                except json.JSONDecodeError:
+                                    # If something is malformed, just skip it
+                                    global_idx += 1
+                                    continue
 
-                            # Index-based filtering as before
-                            if idx in keep_set:
-                                fout.write(line)
-                                kept += 1
+                                line_id = obj.get("id", None)
+
+                                # Sanity check: if we have an expected id for this index, verify it matches.
+                                if global_idx < len(example_ids) and line_id is not None:
+                                    expected_id = example_ids[global_idx]
+                                    if line_id != expected_id and not warn_mismatch_printed:
+                                        print(
+                                            "[Cartography] WARNING: ID mismatch between raw JSONL and "
+                                            "HF dataset order at global index {}: JSONL id='{}', dataset id='{}'. "
+                                            "Check that train_dataset_path matches the dataset used for "
+                                            "training/carto.".format(global_idx, line_id, expected_id)
+                                        )
+                                        warn_mismatch_printed = True  # only print once
+
+                                # Index-based filtering as before
+                                if global_idx in keep_set:
+                                    fout.write(line)
+                                    kept_total += 1
+
+                                # Advance global index across ALL shards, to stay aligned
+                                # with train_dataset / metrics (which are concatenated).
+                                global_idx += 1
 
                     print(
-                        f"[Cartography] Wrote {kept} filtered training examples to "
-                        f"{args.cartography_filter_output}"
+                        f"[Cartography] Wrote {kept_total} filtered training examples "
+                        f"across {len(train_paths)} shards into directory: {filter_output_dir}"
                     )
 
 
