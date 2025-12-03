@@ -386,8 +386,7 @@ def main():
             print(
                 f"[Cartography] No checkpoints found in {training_args.output_dir}. "
                 f"To compute training dynamics, first train with --do_train and "
-                f'--save_strategy epoch (and optionally --evaluation_strategy epoch).'
-                f"Or --save_strategy steps --save_steps 10000 also works."
+                f"--save_strategy epoch or --save_strategy steps --save_steps 10000"
             )
         else:
             print(f"[Cartography] Found {len(checkpoint_paths)} checkpoints for training dynamics:")
@@ -485,11 +484,10 @@ def main():
 
             # Where to store metrics
             if args.cartography_metrics_output_dir is None:
-                metrics_output_dir = os.path.dirname(os.path.join(training_args.output_dir, "cartography_metrics_snli"))
+                metrics_output_dir = os.path.join(os.path.join(training_args.output_dir, "cartography_metrics_snli"))
             else:
-                metrics_output_dir = os.path.dirname(args.cartography_metrics_output_dir)
-            if not os.path.exists(metrics_output_dir):
-                os.makedirs(metrics_output_dir, exist_ok=True)
+                metrics_output_dir = args.cartography_metrics_output_dir
+            os.makedirs(metrics_output_dir, exist_ok=True)
             metrics_output_path = os.path.join(metrics_output_dir, f"cartography_metrics_snli_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
             print(f"[Cartography] Writing metrics to {metrics_output_path}")
 
@@ -574,14 +572,8 @@ def main():
                     # as load_dataset('json', data_files=...), double check with "id" field if present.
 
                     # Prepare filter output directory
-                    filter_output_dir = os.path.dirname(args.cartography_filter_output_dir)
-                    if not filter_output_dir:
-                        raise ValueError(
-                            "[Cartography] cartography_filter_output_path must be a directory path, "
-                            "e.g. '--cartography_filter_output_path /path/to/filtered_snli_dir'."
-                        )
-                    if not os.path.exists(filter_output_dir):
-                        os.makedirs(filter_output_dir, exist_ok=True)
+                    filter_output_dir = args.cartography_filter_output_dir
+                    os.makedirs(filter_output_dir, exist_ok=True)
 
                     # Expand glob for train_dataset_path as file list
                     train_paths = sorted(glob.glob(args.train_dataset_path))
