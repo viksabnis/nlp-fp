@@ -223,7 +223,7 @@ def main():
             prepare_train_dataset,
             batched=True,
             num_proc=NUM_PREPROCESSING_WORKERS,
-            remove_columns=[c for c in train_dataset.column_names if c != 'label']
+            remove_columns=[c for c in train_dataset.column_names if c not in ('label', 'id')]
         )
 
     if training_args.do_eval:
@@ -364,16 +364,17 @@ def main():
     # Dataset Cartography: compute training dynamics then do optional filtering
     # --------------------------------------------------------------------------
     if args.task == 'nli' and args.compute_training_dynamics:
+        print(f"[Dataset Cartography] Calculating training dynamics...")
         if train_dataset_featurized is None or train_dataset is None:
             raise ValueError(
-                "compute_training_dynamics is set, but train_dataset/train_dataset_featurized "
+                "[Cartography] compute_training_dynamics is set, but train_dataset/train_dataset_featurized "
                 "were not prepared. Make sure you are using a dataset with a 'train' split "
                 "and that --use_custom_dataset/--train_dataset_path are set correctly."
             )
 
         # Find all checkpoints in output_dir; these correspond to epochs if you trained
         # with --save_strategy epoch. This matches the behavior in Dataset Cartography, where
-        # training dynamics are recorded across multiple epochs. :contentReference[oaicite:2]{index=2}
+        # training dynamics are recorded across multiple epochs.
         checkpoint_paths = sorted(
             glob.glob(os.path.join(training_args.output_dir, "checkpoint-*")),
             key=lambda p: int(os.path.basename(p).split("-")[-1])
@@ -383,6 +384,7 @@ def main():
                 f"[Cartography] No checkpoints found in {training_args.output_dir}. "
                 f"To compute training dynamics, first train with --do_train and "
                 f'--save_strategy epoch (and optionally --evaluation_strategy epoch).'
+                f"Or --save_strategy steps --save_steps 10000 also works."
             )
         else:
             print(f"[Cartography] Found {len(checkpoint_paths)} checkpoints for training dynamics:")
@@ -393,20 +395,30 @@ def main():
             #   - confidence: mean p(gold | x_i) across epochs
             #   - variability: stddev of p(gold | x_i) across epochs
             #   - correctness: fraction of epochs where argmax == gold label
-            # These correspond to the coordinates used in Data Maps. :contentReference[oaicite:3]{index=3}
+            # These correspond to the coordinates used in Data Maps.
 
             # Gold label (as numpy)
             if 'label' in train_dataset_featurized.column_names:
                 gold_labels = np.array(train_dataset_featurized['label'], dtype=np.int64)
             else:
                 raise ValueError(
-                    "Could not find 'label' column in train_dataset_featurized which is "
+                    "[Cartography] Could not find 'label' column in train_dataset_featurized which is "
                     "needed for training dynamics."
                 )
 
             num_examples = gold_labels.shape[0]
             num_labels = int(max(gold_labels)) + 1
-            print(f"[Cartography] Computing training dynamics for {num_examples} examples.")
+            print(f"[Cartography] Computing training dynamics for {num_examples} examples each with one of {num_labels} labels.")
+
+            # Also capture example IDs from the raw train_dataset for sanity-check later
+            if 'id' in train_dataset.column_names:
+                example_ids = list(train_dataset['id'])
+                if len(example_ids) != num_examples:
+                    raise ValueError(
+                        "[Cartography] Length mismatch between train_dataset['id'] and train_dataset_featurized."
+                    )
+            else:
+                example_ids = [str(i) for i in range(num_examples)]
 
             def _softmax(x):
                 x = x - x.max(axis=-1, keepdims=True)
@@ -480,6 +492,7 @@ def main():
                 for idx in range(num_examples):
                     rec = {
                         "index": int(idx),
+                        "id": example_ids[idx],
                         "gold": int(gold_labels[idx]),
                         "confidence": float(confidence[idx]),
                         "variability": float(variability[idx]),
@@ -489,7 +502,7 @@ def main():
                     f.write(json.dumps(rec))
                     f.write('\n')
 
-            # Optional: immediately filter train dataset using the metrics we just computed
+            # Immediately filter train dataset using the metrics we just computed
             if args.cartography_filter_output is not None:
                 if not args.use_custom_dataset or args.train_dataset_path is None:
                     print(
@@ -500,22 +513,22 @@ def main():
                 else:
                     print("[Cartography] Applying cartography-based filtering to the train set...")
 
-                    drop_easy_frac = args.drop_easy_frac
-                    drop_hard_frac = args.drop_hard_frac
-                    ambig_top_frac = args.ambig_top_frac
+                    drop_easy_ratio = args.drop_easy_ratio
+                    drop_hard_ratio= args.drop_hard_ratio
+                    top_ambiguous_ratio = args.top_ambiguous_ratio
 
                     # Quantile thresholds on confidence
-                    if 0.0 < drop_easy_frac < 1.0:
-                        easy_threshold = np.quantile(confidence, 1.0 - drop_easy_frac)
+                    if 0.0 < drop_easy_ratio < 1.0:
+                        easy_threshold = np.quantile(confidence, 1.0 - drop_easy_ratio)
                     else:
                         easy_threshold = 1.1  # effectively disables easy-dropping
 
-                    if 0.0 < drop_hard_frac < 1.0:
-                        hard_threshold = np.quantile(confidence, drop_hard_frac)
+                    if 0.0 < drop_hard_ratio < 1.0:
+                        hard_threshold = np.quantile(confidence, drop_hard_ratio)
                     else:
-                        hard_threshold = -0.1  # disables hard-dropping
+                        hard_threshold = -0.1  # effectively disables hard-dropping
 
-                    print(f"[Cartography] Hard (low-confidence) threshold:  {hard_threshold:.4f}")
+                    print(f"[Cartography] Hard (low-confidence) threshold: {hard_threshold:.4f}")
                     print(f"[Cartography] Easy (high-confidence) threshold: {easy_threshold:.4f}")
 
                     # First pass: drop very easy (high-conf + high-correct) and very hard (low-conf + low-correct).
@@ -525,12 +538,12 @@ def main():
                         v = variability[idx]
                         corr_i = correctness[idx]
 
-                        # Drop "too easy" examples likely dominated by artifacts. :contentReference[oaicite:4]{index=4}
-                        if drop_easy_frac > 0.0 and c >= easy_threshold and corr_i >= 0.9:
+                        # Drop "too easy" examples likely dominated by artifacts.
+                        if drop_easy_ratio > 0.0 and c >= easy_threshold and corr_i >= 0.9:
                             continue
 
                         # Drop "too hard" / noisy examples (very low confidence and correctness).
-                        if drop_hard_frac > 0.0 and c <= hard_threshold and corr_i <= 0.34:
+                        if drop_hard_ratio > 0.0 and c <= hard_threshold and corr_i <= 0.34:
                             continue
 
                         selected_indices.append(idx)
@@ -538,9 +551,9 @@ def main():
                     print(f"[Cartography] After easy/hard filtering: {len(selected_indices)} / {num_examples} examples remain.")
 
                     final_indices = selected_indices
-                    if 0.0 < ambig_top_frac < 1.0 and len(selected_indices) > 0:
+                    if 0.0 < top_ambiguous_ratio < 1.0 and len(selected_indices) > 0:
                         vars_selected = np.array([variability[i] for i in selected_indices], dtype=np.float32)
-                        var_threshold = np.quantile(vars_selected, 1.0 - ambig_top_frac)
+                        var_threshold = np.quantile(vars_selected, 1.0 - top_ambiguous_ratio)
                         print(f"[Cartography] Variability threshold for ambiguous region: {var_threshold:.4f}")
                         final_indices = [i for i in selected_indices if variability[i] >= var_threshold]
 
@@ -551,10 +564,36 @@ def main():
 
                     # Streaming over original JSONL train file to write filtered subset.
                     # Assumes each JSONL line corresponds to one training example in the same order
-                    # as load_dataset('json', data_files=...). This matches your ERG-aug SNLI setup.
+                    # as load_dataset('json', data_files=...), double check with "id" field if present.
+                    keep_set = set(final_indices)
+                    kept = 0
+                    warn_mismatch_printed = False
+
                     with open(args.train_dataset_path, 'r', encoding='utf-8') as fin, \
                          open(args.cartography_filter_output, 'w', encoding='utf-8') as fout:
                         for idx, line in enumerate(fin):
+                            # Parse to get the id
+                            try:
+                                obj = json.loads(line)
+                            except json.JSONDecodeError:
+                                # If something is malformed, just skip it
+                                continue
+
+                            line_id = obj.get("id", None)
+
+                            # Sanity check: if we have an expected id for this index, verify it matches.
+                            if idx < len(example_ids) and line_id is not None:
+                                expected_id = example_ids[idx]
+                                if line_id != expected_id and not warn_mismatch_printed:
+                                    print(
+                                        "[Cartography] WARNING: ID mismatch between raw JSONL and "
+                                        "HF dataset order at index {}: JSONL id='{}', dataset id='{}'. "
+                                        "Check that train_dataset_path matches the dataset used for "
+                                        "training/carto.".format(idx, line_id, expected_id)
+                                    )
+                                    warn_mismatch_printed = True
+
+                            # Index-based filtering as before
                             if idx in keep_set:
                                 fout.write(line)
                                 kept += 1
