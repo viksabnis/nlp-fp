@@ -13,13 +13,34 @@ from datetime import datetime
 NUM_PREPROCESSING_WORKERS = 4
 
 def encode_label(example):
-    if example['label'] is None:
+    """ Handle label string to integer conversion, ignore the case."""
+    label = example.get('label', None)
+
+    if label is None:
         example['label'] = -1
-    elif isinstance(example['label'], str):
-        label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
-        example['label'] = label2id[example['label']]
-    elif isinstance(example['label'], int):
         return example
+
+    # If it's already an int, keep it as-is
+    if isinstance(label, int):
+        return example
+
+    # If label is string-like, normalize whitespace + case
+    if isinstance(label, str):
+        normalized = label.strip().lower()
+        label2id = {
+            'entailment': 0,
+            'neutral': 1,
+            'contradiction': 2,
+        }
+        if normalized in label2id:
+            example['label'] = label2id[normalized]
+        else:
+            # Unknown / weird label: mark as -1 so you can filter later
+            example['label'] = -1
+        return example
+
+    # Fallback for unexpected types
+    example['label'] = -1
     return example
 
 def main():
