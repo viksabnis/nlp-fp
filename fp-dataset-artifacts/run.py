@@ -16,31 +16,69 @@ def encode_label(example):
     """ Handle label string to integer conversion, ignore the case."""
     label = example.get('label', None)
 
+    # Treat None as invalid -2
     if label is None:
-        example['label'] = -1
+        example['label'] = -2
         return example
 
-    # If it's already an int, keep it as-is
-    if isinstance(label, int):
-        return example
-
-    # If label is string-like, normalize whitespace + case
+    # String labels: normalize case and map
     if isinstance(label, str):
-        normalized = label.strip().lower()
+        # some files have 'Neutral', 'CONTRADICTION', etc.
+        label_norm = label.strip().lower()
         label2id = {
-            'entailment': 0,
-            'neutral': 1,
-            'contradiction': 2,
+            "entailment": 0,
+            "neutral": 1,
+            "contradiction": 2,
         }
-        if normalized in label2id:
-            example['label'] = label2id[normalized]
-        else:
-            # Unknown / weird label: mark as -1 so you can filter later
-            example['label'] = -1
+        # Treat unknown label string as invalid -1
+        example["label"] = label2id.get(label_norm, -1)
         return example
 
-    # Fallback for unexpected types
-    example['label'] = -1
+    # Int labels: keep 0/1/2, anything else -> -3
+    if isinstance(label, int):
+        if label in (0, 1, 2):
+            example["label"] = label
+        else:
+            example["label"] = -3
+        return example
+
+    # Fallback for other unexpected types as -4
+    example['label'] = -4
+    return example
+
+def encode_label_sanitized(example):
+    """
+    Map all labels into {0: entailment, 1: neutral, 2: contradiction}.
+    Anything invalid/unknown/else is forced to 1 (neutral).
+    This is intentionally lossy but guarantees no weird labels reach
+    the model, avoiding CUDA/HIP crashes.
+    """
+    label = example.get('label', None)
+
+    # String labels: normalize case
+    if isinstance(label, str):
+        # some files have 'Neutral', 'CONTRADICTION', etc.
+        label_norm = label.strip().lower()
+        label2id = {
+            "entailment": 0,
+            "neutral": 1,
+            "contradiction": 2,
+        }
+        # Unknown string -> neutral
+        example["label"] = label2id.get(label_norm, 1)
+        return example
+
+    # Integer labels
+    if isinstance(label, int):
+        if label in (0, 1, 2):
+            example["label"] = label
+        else:
+            # Other integer -> neutral
+            example["label"] = 1
+        return example
+
+    # None, missing, floats, whatever else -> neutral
+    example["label"] = 1
     return example
 
 def main():
@@ -155,10 +193,10 @@ def main():
             if args.force_nli_label_mapping:
                 print("Mapping NLI dataset label from string to integer...")
                 if training_args.do_train or args.compute_training_dynamics or (args.cartography_filter_output_dir is not None):
-                    if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label)
+                    if 'train' in dataset: dataset['train'] = dataset['train'].map(encode_label_sanitized)
                 if training_args.do_eval:
-                    if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label)
-                    if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label)
+                    if 'dev' in dataset: dataset['dev'] = dataset['dev'].map(encode_label_sanitized)
+                    if 'test' in dataset: dataset['test'] = dataset['test'].map(encode_label_sanitized)
 
     else:
         default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
